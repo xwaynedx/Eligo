@@ -113,7 +113,13 @@ final class ChooserKeyboardFocusTests: XCTestCase {
             XCTAssertTrue(presentation.panel.firstResponder === presentation.view)
             XCTAssertFalse(presentation.panel.autorecalculatesKeyViewLoop)
 
+            if keyCode == 36 {
+                traceForwardTab("before", panel: presentation.panel, chooser: presentation.view)
+            }
             sendTab(to: presentation.panel)
+            if keyCode == 36 {
+                traceForwardTab("after", panel: presentation.panel, chooser: presentation.view)
+            }
             XCTAssertEqual((presentation.panel.firstResponder as? NSView)?.accessibilityIdentifier(), "chooser.copyLink")
             sendTab(to: presentation.panel)
             XCTAssertEqual((presentation.panel.firstResponder as? NSView)?.accessibilityIdentifier(), "chooser.expandLink")
@@ -242,6 +248,27 @@ final class ChooserKeyboardFocusTests: XCTestCase {
         XCTAssertEqual(completions, [OpenDestinationID(browserID: browsers[28].id, mode: .normal)])
     }
 
+    private func traceForwardTab(_ phase: String, panel: NSPanel, chooser: ChooserView) {
+        func name(_ responder: NSResponder?) -> String {
+            guard let responder else { return "none" }
+            if responder === chooser { return "ChooserView" }
+            let identifier = (responder as? NSView)?.accessibilityIdentifier() ?? ""
+            return identifier.isEmpty ? String(describing: type(of: responder)) : identifier
+        }
+        let preference = UserDefaults.standard.object(forKey: "AppleKeyboardUIMode")
+        var fields = [
+            phase, "key=\(panel.isKeyWindow)", "visible=\(panel.isVisible)", "active=\(NSApp.isActive)",
+            "policy=\(NSApp.activationPolicy().rawValue)",
+            "fullAccess=\(NSApp.isFullKeyboardAccessEnabled)", "pref=\(preference.map { String(describing: $0) } ?? "unset")",
+            "responder=\(name(panel.firstResponder))", "next=\(name(chooser.nextKeyView))"
+        ]
+        if phase == "after" {
+            fields.append("nextValid=\(name(chooser.nextValidKeyView))")
+            fields.append("nextEligible=\(chooser.nextKeyView?.canBecomeKeyView == true)")
+        }
+        print("ELIGO_TAB " + fields.joined(separator: " "))
+    }
+
     private func sendTab(to panel: NSPanel, backwards: Bool = false) {
         panel.sendEvent(chooserKeyEvent(
             keyCode: 48, characters: backwards ? "\u{19}" : "\t", modifiers: backwards ? .shift : [],
@@ -272,16 +299,43 @@ final class ChooserKeyboardFocusTests: XCTestCase {
         let board = NSPasteboard(name: .init("EligoTests.Focus.\(UUID())"))
         board.setString("keep clipboard", forType: .string)
         var displayedPanel: NSPanel?
-        let controller = ChooserWindowController(
-            appLanguageStore: makeEnglishAppLanguageStore(), displayPanel: { displayedPanel = $0 },
-            screenGeometry: { (NSRect(x: 0, y: 0, width: 1280, height: 720), NSPoint(x: 640, y: 360)) },
-            mouseEvents: ChooserMouseEventSource().events, pasteboard: board
-        )
+        let productionDisplay = ProcessInfo.processInfo.environment["ELIGO_TAB_PANEL"] == "production"
+        if ProcessInfo.processInfo.environment["ELIGO_TAB_ACCESSORY_HOST"] == "1" {
+            ApplicationPresentationController().enterBackgroundMode()
+        }
+        let existingWindows = productionDisplay ? Set(NSApp.windows.map(ObjectIdentifier.init)) : []
+        let geometry: () -> (visibleFrame: NSRect, mouseLocation: NSPoint) = {
+            (NSRect(x: 0, y: 0, width: 1280, height: 720), NSPoint(x: 640, y: 360))
+        }
+        let controller: ChooserWindowController
+        if productionDisplay {
+            // Leave displayPanel at its production default; observe the window after presentation.
+            controller = ChooserWindowController(
+                appLanguageStore: makeEnglishAppLanguageStore(), screenGeometry: geometry,
+                mouseEvents: ChooserMouseEventSource().events, pasteboard: board
+            )
+        } else {
+            controller = ChooserWindowController(
+                appLanguageStore: makeEnglishAppLanguageStore(), displayPanel: { displayedPanel = $0 },
+                screenGeometry: geometry, mouseEvents: ChooserMouseEventSource().events, pasteboard: board
+            )
+        }
         controller.present(
             link: IncomingLink(url: URL(string: "https://example.com/focus")!),
             destinations: DestinationCatalog(enabledBrowsers: browsers).destinations,
             recentBrowserID: browsers.first?.id, completion: completion
         )
+        if productionDisplay {
+            displayedPanel = NSApp.windows.compactMap { $0 as? NSPanel }.first { window in
+                !existingWindows.contains(ObjectIdentifier(window)) && browserChooserView(in: window.contentView) != nil
+            }
+            if let panel = displayedPanel {
+                let deadline = Date(timeIntervalSinceNow: 2)
+                while (!panel.isKeyWindow || !NSApp.isActive) && Date() < deadline {
+                    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+                }
+            }
+        }
         let panel = try XCTUnwrap(displayedPanel)
         let view = try XCTUnwrap(browserChooserView(in: panel.contentView))
         panel.contentView?.layoutSubtreeIfNeeded()
