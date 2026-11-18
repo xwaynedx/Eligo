@@ -1,0 +1,47 @@
+{
+  "alwaysShowChooser": true,
+  "futureSettingsField": { "preserved": true },
+  "scope": {
+    "kind": "onlyThese",
+    "bypassDestinationID": { "browserID": "com.apple.Safari", "mode": "normal" },
+    "futureScopeField": "preserved",
+    "matchers": [
+      { "normalizedHost": "2001:db8::1", "includesSubdomains": false },
+      { "normalizedHost": "2001:0db8:0000:0000:0000:0000:0000:0001", "includesSubdomains": false, "annotation": "keep" },
+      { "normalizedHost": "unrelated.scope.example", "includesSubdomains": true }
+    ]
+  },
+  "rules": [
+    {
+      "id": "00000000-0000-0000-0000-000000000001",
+      "matcher": { "normalizedHost": "untouched.example", "includesSubdomains": false },
+      "destinationID": { "browserID": "com.apple.Safari", "mode": "normal" },
+      "futureRuleField": "preserved"
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "matcher": { "normalizedHost": "::1", "includesSubdomains": false },
+      "destinationID": { "browserID": "com.apple.Safari", "mode": "normal" }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000003",
+      "matcher": { "normalizedHost": "2001:db8::1", "includesSubdomains": false },
+      "destinationID": { "browserID": "com.google.Chrome", "mode": "privateBrowsing" }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000004",
+      "matcher": { "normalizedHost": "0:0:0:0:0:0:0:1", "includesSubdomains": false, "futureMatcherField": 42 },
+      "destinationID": { "browserID": "org.mozilla.firefox", "mode": "privateBrowsing" }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000005",
+      "matcher": { "normalizedHost": "2001:0db8:0000:0000:0000:0000:0000:0001", "includesSubdomains": false },
+      "destinationID": { "browserID": "com.google.Chrome", "mode": "privateBrowsing" }
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000006",
+      "matcher": { "normalizedHost": "2001:db8::2", "includesSubdomains": false },
+      "destinationID": { "browserID": "com.apple.Safari", "mode": "normal" }
+    }
+  ]
+}

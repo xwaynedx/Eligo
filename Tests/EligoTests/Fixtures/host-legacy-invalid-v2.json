@@ -1,0 +1,85 @@
+{
+  "alwaysShowChooser" : true,
+  "rules" : [
+    {
+      "destinationID" : {
+        "browserID" : "com.apple.Safari",
+        "mode" : "normal"
+      },
+      "id" : "00000000-0000-0000-0000-000000000001",
+      "matcher" : {
+        "includesSubdomains" : false,
+        "normalizedHost" : "untouched.example"
+      }
+    },
+    {
+      "destinationID" : {
+        "browserID" : "com.google.Chrome",
+        "mode" : "privateBrowsing"
+      },
+      "id" : "00000000-0000-0000-0000-000000000002",
+      "matcher" : {
+        "includesSubdomains" : false,
+        "normalizedHost" : "example.com.."
+      }
+    },
+    {
+      "destinationID" : {
+        "browserID" : "com.apple.Safari",
+        "mode" : "normal"
+      },
+      "id" : "00000000-0000-0000-0000-000000000003",
+      "matcher" : {
+        "includesSubdomains" : false,
+        "normalizedHost" : "example.com."
+      }
+    },
+    {
+      "destinationID" : {
+        "browserID" : "com.google.Chrome",
+        "mode" : "privateBrowsing"
+      },
+      "id" : "00000000-0000-0000-0000-000000000004",
+      "matcher" : {
+        "includesSubdomains" : false,
+        "normalizedHost" : "example.com"
+      }
+    },
+    {
+      "destinationID" : {
+        "browserID" : "com.apple.Safari",
+        "mode" : "normal"
+      },
+      "id" : "00000000-0000-0000-0000-000000000005",
+      "matcher" : {
+        "includesSubdomains" : false,
+        "normalizedHost" : "a~b.com"
+      }
+    }
+  ],
+  "scope" : {
+    "bypassDestinationID" : {
+      "browserID" : "com.apple.Safari",
+      "mode" : "normal"
+    },
+    "kind" : "onlyThese",
+    "matchers" : [
+      {
+        "includesSubdomains" : true,
+        "normalizedHost" : "scope.example."
+      },
+      {
+        "includesSubdomains" : true,
+        "normalizedHost" : "scope.example"
+      },
+      {
+        "includesSubdomains" : true,
+        "normalizedHost" : "broken-scope.example.."
+      },
+      {
+        "includesSubdomains" : true,
+        "normalizedHost" : "outside.example"
+      }
+    ]
+  }
+}

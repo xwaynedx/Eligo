@@ -1,0 +1,66 @@
+name: Bug Report
+description: Report a problem with Eligo
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a problem. Before filing, please run through these checks:
+
+        1. Confirm that Eligo is the default browser for HTTP and HTTPS links.
+        2. Open Settings and rescan browsers.
+        3. Confirm that at least one browser is enabled.
+        4. If the issue concerns a Domain Rule, check Routing Scope and the Bypass Destination.
+        5. If the issue concerns Private mode, identify whether the browser was stopped or already running.
+
+        **Do not include** passwords, session tokens, full URLs containing secrets, or private browsing history in this report.
+  - type: textarea
+    id: support-info
+    attributes:
+      label: Support Info
+      description: Open `About Eligo` → `Support Guide`, choose `Copy Support Info`, and paste the text here.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The exact steps that reproduce the problem.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: source-app
+    attributes:
+      label: Source application or file type
+      description: The application or file type that opened the link (for example, Mail, Slack, or a local HTML file).
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      description: The browser involved and its version.
+    validations:
+      required: true
+  - type: dropdown
+    id: browser-running
+    attributes:
+      label: Was the browser already running when the problem occurred?
+      options:
+        - Already running
+        - Not running (launched by the link)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Screenshots or screen recording
+      description: Relevant screenshots or a short screen recording, if safe to share.
+    validations:
+      required: false
