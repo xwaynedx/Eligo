@@ -22,19 +22,9 @@ final class SettingsWindowControllerRuleWorkflowTests: XCTestCase {
         XCTAssertEqual(results, [finalDestination])
     }
 
-    private var fixtures: [SettingsWindowControllerRuleWorkflowFixture] = []
-
-    override func tearDown() {
-        for fixture in fixtures {
-            fixture.cleanup()
-        }
-        fixtures.removeAll()
-        super.tearDown()
-    }
-
     private func makeFixture(rules: [DomainRule] = []) throws -> SettingsWindowControllerRuleWorkflowFixture {
         let fixture = try SettingsWindowControllerRuleWorkflowFixture(rules: rules)
-        fixtures.append(fixture)
+        addTeardownBlock { await fixture.cleanup() }
         return fixture
     }
 
