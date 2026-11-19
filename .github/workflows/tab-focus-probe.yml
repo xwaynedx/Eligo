@@ -1,4 +1,4 @@
-name: Tab focus diagnostic
+name: macOS diagnostics
 
 on:
   push:
@@ -8,17 +8,27 @@ permissions:
   contents: read
 
 jobs:
-  macos-15-build:
-    name: macOS 15 Swift build
-    if: github.event.created
+  settings-workflow:
+    name: macOS 15 settings workflow tests
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Build with the runner toolchain
+      - name: Run SettingsWindowControllerRuleWorkflowTests
         run: |
-          swift --version
           echo "::notice::macOS $(sw_vers -productVersion) / $(swift --version | head -1)"
-          swift build
+          log="$RUNNER_TEMP/settings-workflow-tests.log"
+          if ! swift test --filter SettingsWindowControllerRuleWorkflowTests > "$log" 2>&1; then
+            cat "$log"
+            awk '/: error:/ && !seen[$0]++ && n++ < 8 {print "::error::" $0}' "$log"
+            exit 1
+          fi
+          cat "$log"
+          summary=$(awk '/Executed [1-9][0-9]* tests?, with 0 failures/ {print; exit}' "$log")
+          if [[ -z "$summary" ]]; then
+            echo "::error::No passing settings workflow tests were reported"
+            exit 1
+          fi
+          echo "::notice title=SettingsWindowControllerRuleWorkflowTests::$summary"
 
   forward-tab:
     name: macOS 26 forward Tab
