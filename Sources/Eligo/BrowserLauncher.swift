@@ -33,6 +33,7 @@ protocol ProcessExecuting: AnyObject {
     )
 }
 
+// LaunchServices 在自己的队列调用系统回调。显式 @Sendable 让回调先接收结果，再交回主 actor。
 @MainActor
 final class NSWorkspaceOpener: WorkspaceOpening {
     typealias URLRequest = @MainActor (
@@ -42,7 +43,7 @@ final class NSWorkspaceOpener: WorkspaceOpening {
     private let openURLRequest: URLRequest
 
     init(openURLRequest: @escaping URLRequest = { urls, applicationURL, configuration, completion in
-        NSWorkspace.shared.open(urls, withApplicationAt: applicationURL, configuration: configuration) { _, error in
+        NSWorkspace.shared.open(urls, withApplicationAt: applicationURL, configuration: configuration) { @Sendable _, error in
             Task { @MainActor in completion(error == nil) }
         }
     }) {
@@ -74,7 +75,7 @@ final class NSWorkspaceOpener: WorkspaceOpening {
         // instance. Force a new instance so --incognito and the URL reach Chromium.
         // This stays on NSWorkspace (Keychain-safe); bare Process launch does not.
         configuration.createsNewApplicationInstance = createsNewApplicationInstance
-        NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { application, error in
+        NSWorkspace.shared.openApplication(at: applicationURL, configuration: configuration) { @Sendable application, error in
             Task { @MainActor in completion(error == nil, application) }
         }
     }

@@ -137,6 +137,8 @@ final class ChooserViewportTests: XCTestCase {
         let oldView = try XCTUnwrap(browserChooserView(in: panels[0].contentView))
         let oldScroll = try XCTUnwrap(oldView.subviews.compactMap { $0 as? NSScrollView }.first)
         XCTAssertGreaterThan(oldScroll.contentView.bounds.minY, 0)
+        let oldRow = try XCTUnwrap(browserChooserRows(in: oldView).last)
+        XCTAssertTrue(panels[0].makeFirstResponder(oldRow))
 
         visibleFrame = NSRect(x: -1600, y: 900, width: 1600, height: 500)
         controller.present(
@@ -148,6 +150,9 @@ final class ChooserViewportTests: XCTestCase {
         let view = try XCTUnwrap(browserChooserView(in: panel.contentView))
         let scroll = try XCTUnwrap(view.subviews.compactMap { $0 as? NSScrollView }.first)
         let rows = browserChooserRows(in: view)
+        XCTAssertTrue(panel.firstResponder === view)
+        panel.sendEvent(chooserKeyEvent(keyCode: 48, characters: "\t", windowNumber: panel.windowNumber))
+        XCTAssertEqual((panel.firstResponder as? NSView)?.accessibilityIdentifier(), "chooser.copyLink")
         XCTAssertTrue(visibleFrame.insetBy(dx: 8, dy: 8).contains(panel.frame))
         XCTAssertEqual(panel.maxSize.height, 484)
         XCTAssertEqual(scroll.contentView.bounds.minY, 0)

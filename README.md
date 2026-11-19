@@ -46,7 +46,7 @@ Hover over the link or hold Option to preview the full URL in a separate popover
 
 On layouts such as French AZERTY, typing a top-row digit requires Shift, so that key combination requests Private mode. For Normal mode, use the numeric keypad or select the browser with ↑ / ↓ and press Return.
 
-Requesting Private mode for a browser that does not support it plays an alert sound and leaves the chooser open. Tab / Shift + Tab moves focus between controls, and Return activates the focused action. When the chooser itself has focus, Return opens the current selection.
+Requesting Private mode for a browser that does not support it plays an alert sound and leaves the chooser open. Use Tab or Shift + Tab to move between controls. Return, keypad Enter, or Space activates the focused control. For example, pressing Return on Chrome’s Private button asks Chrome to open the link privately. When the chooser itself has focus, Return opens the current selection.
 
 The chooser initially selects the Normal destination of the most recently used browser from a successful manual selection. With Always Show Chooser enabled, a matching Domain Rule or Bypass Destination adds an icon beside its destination. The hint identifies the matched domain, browser, and mode; a bypass target is labeled as the out-of-scope default destination.
 
@@ -92,7 +92,7 @@ Eligo is currently available only as source code. Building the app requires macO
 
    The script ad-hoc signs the bundle and replaces `/Applications/Eligo.app`.
 
-3. Open Settings from the Eligo menu bar icon. In General, click **Set** in the **Default Browser** card to make Eligo the default for HTTP and HTTPS links. You can also choose Eligo in System Settings → Desktop & Dock → Default web browser.
+3. Open Settings from the Eligo menu bar icon. In General, click **Set** in the **Default Browser** card. If macOS asks which browser to use, confirm Eligo as the default for HTTP and HTTPS links. You can also choose Eligo in System Settings → Desktop & Dock → Default web browser.
 
 ## Development
 
@@ -109,7 +109,7 @@ For local debugging, use `./script/build_and_run.sh --debug` (or `debug`). It bu
 
 Debug mode adds `com.apple.security.get-task-allow` to a temporary copy of the entitlements and retains Hardened Runtime. The temporary file is removed on exit; rebuilding in `run` or `verify` mode uses the canonical entitlements without the debugging permission. Release builds also use the canonical entitlements.
 
-To use the built bundle in place, set `INSTALL_DIR="$PWD/dist"`. The build step removes any existing `dist/Eligo.app` and assembles a fresh bundle. If the install path resolves to that bundle, including through a relative path or a symlink, installation skips a second deletion and copy. The script attempts to register the new bundle, then launches it or opens it in LLDB according to the selected mode. When installing elsewhere, the script checks the paths after the build. If one bundle is inside the other or either path cannot be resolved, installation stops before replacing the target bundle.
+To use the built bundle in place, set `INSTALL_DIR="$PWD/dist"`. The build step replaces the entire `dist/Eligo.app`, including anything inside the old bundle. If the install path resolves to the new bundle, including through a relative path or a symlink, installation skips a second deletion and copy. The script attempts to register the new bundle, then launches it or opens it in LLDB according to the selected mode. For other install locations, the script checks the paths after the build. If one bundle is inside the other or either path cannot be resolved, the script stops before the install step deletes the target or copies the new bundle.
 
 ## Release
 

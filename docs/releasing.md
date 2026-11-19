@@ -6,7 +6,7 @@ The first public release is source-only, with version `0.2.0`. Users build the a
 
 1. Keep `VERSION` and the planned versions in [CHANGELOG.md](../CHANGELOG.md) and [CHANGELOG.zh-CN.md](../CHANGELOG.zh-CN.md) consistent. Keep the release contents aligned across both languages. While preparing a release, keep the English notes under `Unreleased` and the Chinese notes under `尚未发布`.
 2. Push the release candidate to `main` and confirm that `linux-checks`, `build-and-test (macos-15)`, and `build-and-test (macos-26)` all pass for that commit.
-3. On the release date, change both changelog headings to `<version> — YYYY-MM-DD` using the actual publication date. For `0.2.0`, also replace the planning paragraph below each heading. Use “Eligo’s first public release is distributed as source code.” in English and “Eligo 首个公开版本以源码形式发布。” in Chinese. Commit both changelogs together and wait for CI to pass on that commit.
+3. On the release date, change both changelog headings to `<version> — YYYY-MM-DD` using the actual publication date. For `0.2.0`, also replace the planning paragraph below each heading. Use “Eligo’s first public release is distributed as source code.” in English and “Eligo 首个公开版本以源码形式发布。” in Chinese. Commit both changelogs together, push the dated commit to GitHub’s `main` branch, and wait for all three CI checks to pass on that commit.
 4. Create a `v<version>` tag, such as `v0.2.0`, on the exact commit that passed CI, then publish the tag and release notes. The first release has source archives only, with no application ZIP attached.
 
 Do not move an already published tag. Subsequent public releases use new versions and ordinary commits.

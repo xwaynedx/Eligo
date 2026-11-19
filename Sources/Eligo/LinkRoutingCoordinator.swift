@@ -215,9 +215,9 @@ final class LinkRoutingCoordinator {
                     guard let self else { request.finish(); return }
                     request.discoveryDeadline = nil
                     if let savedDestinationID {
-                        open(request, destinationID: savedDestinationID, recordsManualSelection: true)
+                        self.open(request, destinationID: savedDestinationID, recordsManualSelection: true)
                     } else {
-                        presentBrowserChooser(for: request)
+                        self.presentBrowserChooser(for: request)
                     }
                 }
             }
