@@ -28,7 +28,13 @@ final class ChooserPresentationLifecycleTests: XCTestCase {
     func testPanelInputDeliversEnterShiftEnterAndEscapeOnce() throws {
         let chrome = makeBrowser(name: "Google Chrome", bundleIdentifier: "com.google.Chrome")
         for privateFocused in [false, true] {
-            for mode: OpeningMode? in [.normal, .privateBrowsing, nil] {
+            let plainMode: OpeningMode = privateFocused ? .privateBrowsing : .normal
+            let keys: [(UInt16, String, NSEvent.ModifierFlags, OpeningMode?)] = [
+                (36, "\r", [], plainMode), (76, "\u{3}", [], plainMode),
+                (36, "\r", .shift, .privateBrowsing), (76, "\u{3}", .shift, .privateBrowsing),
+                (53, "\u{1B}", [], nil)
+            ]
+            for (keyCode, characters, modifiers, expectedMode) in keys {
                 var displayedPanel: NSPanel?
                 let controller = ChooserWindowController(
                     appLanguageStore: makeEnglishAppLanguageStore(), displayPanel: { displayedPanel = $0 },
@@ -49,13 +55,11 @@ final class ChooserPresentationLifecycleTests: XCTestCase {
                 }
 
                 panel.sendEvent(chooserKeyEvent(
-                    keyCode: mode == nil ? 53 : 36,
-                    characters: mode == nil ? "\u{1B}" : "\r",
-                    modifiers: mode == .privateBrowsing ? .shift : [],
+                    keyCode: keyCode, characters: characters, modifiers: modifiers,
                     windowNumber: panel.windowNumber
                 ))
 
-                XCTAssertEqual(selected, [mode.map { OpenDestinationID(browserID: chrome.id, mode: $0) }])
+                XCTAssertEqual(selected, [expectedMode.map { OpenDestinationID(browserID: chrome.id, mode: $0) }])
                 XCTAssertNil(view.onSelect)
                 XCTAssertNil(view.onCancel)
                 XCTAssertTrue(browserChooserRows(in: view).allSatisfy { !$0.isEnabled })

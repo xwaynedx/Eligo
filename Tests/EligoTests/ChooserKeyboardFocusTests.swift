@@ -130,18 +130,79 @@ final class ChooserKeyboardFocusTests: XCTestCase {
             XCTAssertEqual(safari.accessibilityValue() as? String, "Not selected")
             XCTAssertTrue(completions.isEmpty, "Tab must only focus and highlight, never open")
 
-            presentation.panel.sendEvent(chooserKeyEvent(
-                keyCode: keyCode, characters: characters, windowNumber: presentation.panel.windowNumber
-            ))
-            presentation.panel.sendEvent(try XCTUnwrap(NSEvent.keyEvent(
-                with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0,
-                windowNumber: presentation.panel.windowNumber, context: nil,
-                characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
-            )))
+            try pressActivationKey(keyCode, characters: characters, in: presentation.panel)
             XCTAssertEqual(completions, [OpenDestinationID(browserID: browsers[1].id, mode: .normal)])
             XCTAssertEqual(presentation.pasteboard.changeCount, changeCount)
             XCTAssertFalse(chrome.isEnabled, "Completed controls must not remain actionable")
         }
+    }
+
+    func testTabbedPrivateButtonOpensItsBrowserWhenAnotherRowIsHighlighted() throws {
+        let browsers = Array(makeBrowsers().prefix(2))
+        for backwards in [false, true] {
+            for (keyCode, characters) in [(UInt16(36), "\r"), (76, "\u{3}"), (49, " ")] {
+                var opened: [OpenDestinationID?] = []
+                let presentation = try makePresentation(browsers: browsers, onCreateRule: { _, _ in
+                    XCTFail("键盘只应触发聚焦的隐私按钮")
+                }) { opened.append($0?.id) }
+                defer { withExtendedLifetime(presentation.controller) { presentation.view.onCancel?() } }
+                defer { presentation.pasteboard.releaseGlobally() }
+                let panel = presentation.panel
+                let rows = browserChooserRows(in: presentation.view)
+                let safari = try XCTUnwrap(rows.first)
+                let chrome = try XCTUnwrap(rows.last)
+                let privateButton = try XCTUnwrap(browserChooserPrivateButton(in: chrome))
+
+                if backwards {
+                    sendTab(to: panel, backwards: true)
+                    XCTAssertEqual((panel.firstResponder as? NSView)?.accessibilityIdentifier(), "chooser.createRule")
+                    sendTab(to: panel, backwards: true)
+                } else {
+                    for _ in 0..<5 { sendTab(to: panel) }
+                }
+                safari.mouseEntered(with: chooserMouseEvent(
+                    location: safari.convert(NSPoint(x: 10, y: 20), to: nil), windowNumber: panel.windowNumber
+                ))
+                XCTAssertTrue(panel.firstResponder === privateButton)
+                XCTAssertEqual(safari.accessibilityValue() as? String, "Selected")
+                XCTAssertTrue(opened.isEmpty)
+
+                try pressActivationKey(keyCode, characters: characters, in: panel)
+                XCTAssertEqual(opened, [OpenDestinationID(browserID: browsers[1].id, mode: .privateBrowsing)])
+            }
+        }
+    }
+
+    func testTabSkipsHiddenAndDisabledRowActionsUntilTheyAreAvailableAgain() throws {
+        let presentation = try makePresentation(browsers: makeBrowsers()) { destination in XCTAssertNil(destination) }
+        defer { withExtendedLifetime(presentation.controller) { presentation.view.onCancel?() } }
+        defer { presentation.pasteboard.releaseGlobally() }
+        let panel = presentation.panel
+        let rows = browserChooserRows(in: presentation.view)
+        let safari = try XCTUnwrap(rows.first)
+        let chrome = try XCTUnwrap(rows.dropFirst().first)
+        let chromePrivate = try XCTUnwrap(browserChooserPrivateButton(in: chrome))
+        let zen = try XCTUnwrap(rows.last)
+
+        XCTAssertTrue(panel.makeFirstResponder(chrome))
+        chromePrivate.isHidden = true
+        sendTab(to: panel)
+        XCTAssertTrue(panel.firstResponder === zen)
+        chromePrivate.isHidden = false
+        sendTab(to: panel, backwards: true)
+        XCTAssertTrue(panel.firstResponder === chromePrivate)
+
+        XCTAssertTrue(panel.makeFirstResponder(zen))
+        chrome.isHidden = true
+        sendTab(to: panel, backwards: true)
+        XCTAssertTrue(panel.firstResponder === safari)
+        chrome.isHidden = false
+        chrome.isEnabled = false
+        sendTab(to: panel)
+        XCTAssertTrue(panel.firstResponder === zen)
+        chrome.isEnabled = true
+        sendTab(to: panel, backwards: true)
+        XCTAssertTrue(panel.firstResponder === chromePrivate)
     }
 
     func testReverseTabToZenNormalHighlightsAndActivatesZen() throws {
@@ -218,6 +279,90 @@ final class ChooserKeyboardFocusTests: XCTestCase {
         }
     }
 
+    func testShiftEnterOnFocusedPrivateButtonUsesTheHighlightedBrowser() throws {
+        let browsers = makeBrowsers()
+        for (keyCode, characters) in [(UInt16(36), "\r"), (76, "\u{3}")] {
+            var opened: [OpenDestinationID?] = []
+            let presentation = try makePresentation(browsers: browsers) { opened.append($0?.id) }
+            defer { withExtendedLifetime(presentation.controller) { presentation.view.onCancel?() } }
+            defer { presentation.pasteboard.releaseGlobally() }
+            let panel = presentation.panel
+            let rows = browserChooserRows(in: presentation.view)
+            let safari = try XCTUnwrap(rows.first)
+            let chrome = try XCTUnwrap(rows.dropFirst().first)
+            let zen = try XCTUnwrap(rows.last)
+            let chromePrivate = try XCTUnwrap(browserChooserPrivateButton(in: chrome))
+            XCTAssertTrue(panel.makeFirstResponder(chromePrivate))
+
+            func hover(_ row: NSControl) {
+                row.mouseEntered(with: chooserMouseEvent(
+                    location: row.convert(NSPoint(x: 10, y: 20), to: nil), windowNumber: panel.windowNumber
+                ))
+                XCTAssertEqual(row.accessibilityValue() as? String, "Selected")
+                XCTAssertTrue(panel.firstResponder === chromePrivate)
+            }
+
+            hover(safari)
+            try pressActivationKey(keyCode, characters: characters, modifiers: .shift, in: panel)
+            XCTAssertTrue(opened.isEmpty)
+            XCTAssertTrue(panel.firstResponder === chromePrivate)
+            XCTAssertTrue(chromePrivate.isEnabled)
+
+            hover(zen)
+            try pressActivationKey(keyCode, characters: characters, modifiers: .shift, in: panel)
+            XCTAssertEqual(opened, [OpenDestinationID(browserID: browsers[2].id, mode: .privateBrowsing)])
+        }
+    }
+
+    func testReopenedForegroundPanelStartsAtChooserAndTabsToCopy() throws {
+        let app = NSApplication.shared
+        try XCTSkipUnless(app.isRunning && app.activationPolicy() != .prohibited,
+                          "此用例需要运行 AppKit 事件循环且可激活的应用宿主")
+        let board = NSPasteboard(name: .init("EligoTests.Reopen.\(UUID())"))
+        defer { board.releaseGlobally() }
+        let controller = ChooserWindowController(appLanguageStore: makeEnglishAppLanguageStore(),
+            mouseEvents: ChooserMouseEventSource().events, pasteboard: board)
+        var completed: [OpenDestinationID?] = []
+        func present(_ browsers: [Browser]) throws -> (panel: NSPanel, view: ChooserView) {
+            controller.present(
+                link: IncomingLink(url: URL(string: "https://example.com/reopen")!),
+                destinations: DestinationCatalog(enabledBrowsers: browsers).destinations,
+                recentBrowserID: browsers.last?.id
+            ) { completed.append($0?.id) }
+            let panel = try XCTUnwrap(app.windows.compactMap { $0 as? NSPanel }.first { $0.delegate === controller })
+            let view = try XCTUnwrap(browserChooserView(in: panel.contentView))
+            let deadline = Date(timeIntervalSinceNow: 3)
+            while (!app.isActive || !panel.isKeyWindow) && Date() < deadline {
+                if let event = app.nextEvent(matching: .any, until: Date(timeIntervalSinceNow: 0.02),
+                                             inMode: .default, dequeue: true) {
+                    app.sendEvent(event)
+                }
+            }
+            XCTAssertTrue(app.isActive)
+            XCTAssertTrue(panel.isVisible)
+            XCTAssertTrue(app.keyWindow === panel)
+            return (panel, view)
+        }
+
+        let browsers = (0..<30).map { makeBrowser(name: "Browser \($0)", bundleIdentifier: "test.reopen.\($0)") }
+        let first = try present(browsers)
+        defer { first.view.onCancel?() }
+        let lastRow = try XCTUnwrap(browserChooserRows(in: first.view).last)
+        XCTAssertTrue(first.panel.makeFirstResponder(lastRow))
+        XCTAssertTrue(first.panel.firstResponder === lastRow)
+        first.panel.sendEvent(chooserKeyEvent(keyCode: 53, characters: "\u{1B}", windowNumber: first.panel.windowNumber))
+        XCTAssertEqual(completed, [nil])
+        XCTAssertFalse(first.panel.isVisible)
+
+        let reopened = try present([browsers[29], browsers[0]])
+        defer { reopened.view.onCancel?() }
+        XCTAssertFalse(reopened.panel === first.panel)
+        XCTAssertTrue(reopened.panel.firstResponder === reopened.view)
+        sendTab(to: reopened.panel)
+        XCTAssertEqual((reopened.panel.firstResponder as? NSView)?.accessibilityIdentifier(), "chooser.copyLink")
+        XCTAssertEqual(completed, [nil])
+    }
+
     func testTabFocusRevealsOffscreenNormalRowAndArrowNavigationResumesSelection() throws {
         let browsers = (0..<30).map { makeBrowser(name: "Browser \($0)", bundleIdentifier: "test.focus.\($0)") }
         var completions: [OpenDestinationID?] = []
@@ -269,6 +414,19 @@ final class ChooserKeyboardFocusTests: XCTestCase {
         print("ELIGO_TAB " + fields.joined(separator: " "))
     }
 
+    private func pressActivationKey(
+        _ keyCode: UInt16, characters: String, modifiers: NSEvent.ModifierFlags = [], in panel: NSPanel
+    ) throws {
+        panel.sendEvent(chooserKeyEvent(
+            keyCode: keyCode, characters: characters, modifiers: modifiers, windowNumber: panel.windowNumber
+        ))
+        panel.sendEvent(try XCTUnwrap(NSEvent.keyEvent(
+            with: .keyUp, location: .zero, modifierFlags: modifiers, timestamp: 0,
+            windowNumber: panel.windowNumber, context: nil,
+            characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode
+        )))
+    }
+
     private func sendTab(to panel: NSPanel, backwards: Bool = false) {
         panel.sendEvent(chooserKeyEvent(
             keyCode: 48, characters: backwards ? "\u{19}" : "\t", modifiers: backwards ? .shift : [],
@@ -293,7 +451,8 @@ final class ChooserKeyboardFocusTests: XCTestCase {
     }
 
     private func makePresentation(
-        browsers: [Browser], completion: @escaping (OpenDestination?) -> Void
+        browsers: [Browser], onCreateRule: ((String, OpenDestination) -> Void)? = nil,
+        completion: @escaping (OpenDestination?) -> Void
     ) throws -> (controller: ChooserWindowController, panel: NSPanel, view: ChooserView, pasteboard: NSPasteboard) {
         _ = NSApplication.shared
         let board = NSPasteboard(name: .init("EligoTests.Focus.\(UUID())"))
@@ -323,7 +482,7 @@ final class ChooserKeyboardFocusTests: XCTestCase {
         controller.present(
             link: IncomingLink(url: URL(string: "https://example.com/focus")!),
             destinations: DestinationCatalog(enabledBrowsers: browsers).destinations,
-            recentBrowserID: browsers.first?.id, completion: completion
+            recentBrowserID: browsers.first?.id, onCreateRule: onCreateRule, completion: completion
         )
         if productionDisplay {
             displayedPanel = NSApp.windows.compactMap { $0 as? NSPanel }.first { window in

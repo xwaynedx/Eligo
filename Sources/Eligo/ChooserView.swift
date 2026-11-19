@@ -139,8 +139,7 @@ final class ChooserView: NSVisualEffectView {
             if responder === ruleButton {
                 return createRuleForSelection()
             }
-            if let button = responder as? NSButton, button.isEnabled,
-               button === titleView?.expandButton || button === titleView?.copyButton {
+            if let button = responder as? ChooserActionButton, button.isEnabled {
                 button.performClick(nil)
                 return true
             }
@@ -500,7 +499,9 @@ private final class ChooserRowsView: NSView {
 private final class BrowserRowView: NSControl {
     let browser: Browser
     var onHighlight: (() -> Void)?
-    var onKeyDown: ((NSEvent) -> Bool)?
+    var onKeyDown: ((NSEvent) -> Bool)? {
+        didSet { privateButton?.onKeyDown = onKeyDown }
+    }
     var onSelect: (() -> Bool)?
     var onPrivateSelect: (() -> Void)?
     var onFocusChanged: ((NSView, Bool) -> Void)? {
@@ -809,9 +810,7 @@ private final class BrowserRowView: NSControl {
 }
 
 @MainActor
-private final class PrivateModeButton: NSButton {
-    override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
-
+private final class PrivateModeButton: ChooserActionButton {
     var onFocusChanged: ((NSView, Bool) -> Void)?
     var isRowSelected = false {
         didSet { needsDisplay = true }
@@ -843,11 +842,6 @@ private final class PrivateModeButton: NSButton {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    override func accessibilityPerformPress() -> Bool {
-        guard isEnabled, let action else { return false }
-        return sendAction(action, to: target)
     }
 
     override func setAccessibilityFocused(_ accessibilityFocused: Bool) {
@@ -935,7 +929,7 @@ private extension ChooserView {
     }
 }
 
-private final class ChooserActionButton: NSButton {
+private class ChooserActionButton: NSButton {
     override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
 
     var onKeyDown: ((NSEvent) -> Bool)?
