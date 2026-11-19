@@ -1,4 +1,5 @@
 import argparse
+import os
 from pathlib import Path
 import plistlib
 import subprocess
@@ -39,15 +40,12 @@ def matching(lines, prefix):
 def run_host(app, bundle, expected_mode=None):
     methods = [REOPEN] if expected_mode is None else [NORMAL, PRIVATE, SHIFT, REOPEN]
     label = expected_mode or "local"
-    out, err = (app.parent / f"{label}.{ext}" for ext in ("out", "err"))
-    out.touch()
-    err.touch()
-    started = subprocess.run([
-        "open", "-n", "-W", "--stdout", str(out), "--stderr", str(err),
-        "--env", "ELIGO_TAB_PANEL=production", "--env", f"ELIGO_TAB_TEST_BUNDLE={bundle}",
-        "--env", "ELIGO_TAB_METHODS=" + ",".join(methods), "-a", str(app),
-    ], timeout=90)
-    lines = (out.read_text() + "\n" + err.read_text()).splitlines()
+    environment = {**os.environ, "ELIGO_TAB_PANEL": "production", "ELIGO_TAB_TEST_BUNDLE": str(bundle),
+                   "ELIGO_TAB_METHODS": ",".join(methods)}
+    # 直接启动宿主，超时时 subprocess.run 会终止并回收当前这一个子进程。
+    started = subprocess.run([app / "Contents/MacOS/TabTestHost"], env=environment,
+                             capture_output=True, text=True, timeout=90)
+    lines = (started.stdout + "\n" + started.stderr).splitlines()
     print(f"::group::{label}", *lines, "::endgroup::", sep="\n", flush=True)
     completed = matching(lines, "ELIGO_HOST_TEST")
     ok = started.returncode == 0 and [row["method"] for row in completed] == methods
@@ -60,7 +58,12 @@ def run_host(app, bundle, expected_mode=None):
         ok = ok and all(r["fullAccess"] == expected_mode for r in completed)
         ok = ok and all(r["fullAccess"] == expected_mode and r["visible"] == r["keyWindow"] == r["active"] == "true"
                         and r["deliveries"] == "1" and r["targets"] == "com.google.Chrome/privateBrowsing" for r in private)
-    details = [line for line in lines if line.startswith(("ELIGO_HOST_TEST ", "ELIGO_PRIVATE ", "ELIGO_HOST_ASSERT "))]
+        rejected = matching(lines, "ELIGO_SHIFT_SAFARI")
+        ok = ok and len(rejected) == 2 and {r["key"] for r in rejected} == {"36", "76"}
+        ok = ok and all(r["fullAccess"] == expected_mode and r["deliveries"] == "0"
+                        and r["visible"] == r["keyWindow"] == r["active"] == r["privateFocused"] == "true"
+                        for r in rejected)
+    details = [line for line in lines if line.startswith(("ELIGO_HOST_TEST ", "ELIGO_PRIVATE ", "ELIGO_SHIFT_SAFARI ", "ELIGO_HOST_ASSERT "))]
     notice = "notice" if ok else "error"
     message = "%0A".join(line.replace("%", "%25") for line in (details or lines[-4:]))
     print(f"::{notice} title=AppKit fullAccess {label}::{message}", flush=True)

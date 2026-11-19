@@ -6,9 +6,21 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      full_ci:
+        description: 诊断分支改跑完整 CI
+        type: boolean
+        default: false
 
 jobs:
+  standalone-diagnostics:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/codex/ci-tab-focus' && !inputs.full_ci
+    permissions:
+      contents: read
+    uses: ./.github/workflows/tab-focus-probe.yml
+
   linux-checks:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/codex/ci-tab-focus' || inputs.full_ci
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -18,6 +30,7 @@ jobs:
         run: python3 script/check-portable.py
 
   build-and-test:
+    if: github.event_name != 'workflow_dispatch' || github.ref != 'refs/heads/codex/ci-tab-focus' || inputs.full_ci
     strategy:
       fail-fast: false
       matrix:

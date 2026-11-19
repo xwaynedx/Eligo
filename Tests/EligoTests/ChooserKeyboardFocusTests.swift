@@ -290,7 +290,7 @@ final class ChooserKeyboardFocusTests: XCTestCase {
         let browsers = makeBrowsers()
         for (keyCode, characters) in [(UInt16(36), "\r"), (76, "\u{3}")] {
             var opened: [OpenDestinationID?] = []
-            let presentation = try makePresentation(browsers: browsers) { opened.append($0?.id) }
+            let presentation = try makePresentation(browsers: browsers, showPanel: true) { opened.append($0?.id) }
             defer { withExtendedLifetime(presentation.controller) { presentation.view.onCancel?() } }
             defer { presentation.pasteboard.releaseGlobally() }
             let panel = presentation.panel
@@ -310,10 +310,17 @@ final class ChooserKeyboardFocusTests: XCTestCase {
             }
 
             hover(safari)
+            XCTAssertTrue(panel.isVisible)
             try pressActivationKey(keyCode, characters: characters, modifiers: .shift, in: panel)
+            XCTAssertTrue(panel.isVisible, "Safari 不支持隐私模式，按键后选择器应保持可见")
             XCTAssertTrue(opened.isEmpty)
             XCTAssertTrue(panel.firstResponder === chromePrivate)
             XCTAssertTrue(chromePrivate.isEnabled)
+            if ProcessInfo.processInfo.environment["ELIGO_TAB_PANEL"] == "production" {
+                print("ELIGO_SHIFT_SAFARI key=\(keyCode) fullAccess=\(NSApp.isFullKeyboardAccessEnabled) "
+                      + "visible=\(panel.isVisible) keyWindow=\(panel.isKeyWindow) active=\(NSApp.isActive) "
+                      + "privateFocused=\(panel.firstResponder === chromePrivate) deliveries=\(opened.count)")
+            }
 
             hover(zen)
             try pressActivationKey(keyCode, characters: characters, modifiers: .shift, in: panel)
@@ -459,6 +466,7 @@ final class ChooserKeyboardFocusTests: XCTestCase {
 
     private func makePresentation(
         browsers: [Browser], onCreateRule: ((String, OpenDestination) -> Void)? = nil,
+        showPanel: Bool = false,
         completion: @escaping (OpenDestination?) -> Void
     ) throws -> (controller: ChooserWindowController, panel: NSPanel, view: ChooserView, pasteboard: NSPasteboard) {
         _ = NSApplication.shared
@@ -482,7 +490,10 @@ final class ChooserKeyboardFocusTests: XCTestCase {
             )
         } else {
             controller = ChooserWindowController(
-                appLanguageStore: makeEnglishAppLanguageStore(), displayPanel: { displayedPanel = $0 },
+                appLanguageStore: makeEnglishAppLanguageStore(), displayPanel: { panel in
+                    displayedPanel = panel
+                    if showPanel { panel.orderFront(nil) }
+                },
                 screenGeometry: geometry, mouseEvents: ChooserMouseEventSource().events, pasteboard: board
             )
         }
