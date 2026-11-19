@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, codex/ci-tab-focus]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -34,7 +34,20 @@ jobs:
         run: swift build
 
       - name: Test
-        run: swift test
+        run: |
+          log="$RUNNER_TEMP/eligo-swift-test.log"
+          result=0
+          swift test > "$log" 2>&1 || result=$?
+          cat "$log"
+          awk '/Test Suite .*NSWorkspaceOpenerIntegrationTests.* (passed|failed) at/ {print "::notice::" $0}
+               /Executed [0-9]+ tests?, with/ {summary=$0}
+               END {if (summary) print "::notice title=XCTest summary::" summary}' "$log"
+          if [[ "$result" != 0 ]]; then
+            awk '/: error:|unexpected signal code|[Ff]atal error/ && !seen[$0]++ && n++ < 8 {print "::error::" $0}
+                 /^Test Case .* started\./ {last=$0}
+                 END {if (last) print "::notice title=Last XCTest started::" last}' "$log"
+          fi
+          exit "$result"
 
       - name: Test local build and installation scripts
         run: python3 script/test-build-and-run.py
