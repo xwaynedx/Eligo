@@ -54,3 +54,26 @@ jobs:
 
       - name: Build and smoke-test routing recovery CLI
         run: bash script/test-routing-recovery.sh
+
+      - name: Verify foreground chooser focus with keyboard navigation off and on
+        if: github.ref == 'refs/heads/codex/ci-tab-focus'
+        run: |
+          echo "::notice::macOS $(sw_vers -productVersion) / $(swift --version | head -1)"
+          python3 .github/diagnostics/run-chooser-focus.py "$(swift build --show-bin-path)/EligoPackageTests.xctest" --hosted-both-modes
+
+      - name: Recheck macOS 15 Settings and NSWorkspace cold launch
+        if: github.ref == 'refs/heads/codex/ci-tab-focus' && matrix.os == 'macos-15'
+        run: |
+          set -o pipefail
+          swift test --skip-build --filter 'SettingsWindowControllerRuleWorkflowTests|NSWorkspaceOpenerIntegrationTests/testColdLaunchForwardsCompleteOrderedArgumentsAndApplicationIdentity' 2>&1 | tee "$RUNNER_TEMP/settings-cold.log"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          log = (Path(os.environ["RUNNER_TEMP"]) / "settings-cold.log").read_text()
+          if not re.search(r"testColdLaunchForwardsCompleteOrderedArgumentsAndApplicationIdentity\]' passed", log):
+              raise SystemExit("NSWorkspace cold launch did not pass")
+          if not re.search(r"Executed 13 tests, with 0 failures", log):
+              raise SystemExit("Expected twelve Settings tests and the cold launch to pass without skips")
+          print("::notice title=macOS 15 Settings and workspace::12 Settings tests and the real NSWorkspace cold launch passed")
+          PY

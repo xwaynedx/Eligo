@@ -1,8 +1,7 @@
 name: macOS diagnostics
 
 on:
-  push:
-    branches: [codex/ci-tab-focus]
+  workflow_dispatch:
 
 permissions:
   contents: read
