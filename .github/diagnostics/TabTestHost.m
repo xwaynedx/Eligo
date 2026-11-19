@@ -14,22 +14,30 @@
             exit(2);
         }
         Class cls = NSClassFromString(@"EligoTests.ChooserKeyboardFocusTests");
-        NSString *method = @"testTabToNormalRowHighlightsAndActivatesThatBrowser";
-        NSPredicate *matches = [NSPredicate predicateWithFormat:@"name CONTAINS %@", method];
         XCTestSuite *suite = [cls defaultTestSuite];
-        NSArray<XCTest *> *cases = [suite.tests filteredArrayUsingPredicate:matches];
-        if (cases.count != 1) {
-            fprintf(stderr, "Found %lu matching tests\n", (unsigned long)cases.count);
-            exit(2);
-        }
+        NSArray<NSString *> *methods = [NSProcessInfo.processInfo.environment[@"ELIGO_TAB_METHODS"]
+                                       componentsSeparatedByString:@","];
+        if (!methods.count) { exit(2); }
         [XCTestObservationCenter.sharedTestObservationCenter addTestObserver:self];
-        XCTest *test = cases.firstObject;
-        [test runTest];
-        XCTestRun *run = test.testRun;
-        printf("ELIGO_HOST_TEST executed=%lu skipped=%lu failures=%lu passed=%s\n",
-               (unsigned long)run.executionCount, (unsigned long)run.skipCount,
-               (unsigned long)run.totalFailureCount, run.hasSucceeded ? "true" : "false");
-        exit(run.hasSucceeded ? 0 : 1);
+        BOOL allPassed = YES;
+        for (NSString *method in methods) {
+            NSPredicate *matches = [NSPredicate predicateWithFormat:@"name CONTAINS %@", method];
+            NSArray<XCTest *> *cases = [suite.tests filteredArrayUsingPredicate:matches];
+            if (cases.count != 1) {
+                fprintf(stderr, "Found %lu matches for %s\n", (unsigned long)cases.count, method.UTF8String);
+                exit(2);
+            }
+            XCTest *test = cases.firstObject;
+            [test runTest];
+            XCTestRun *run = test.testRun;
+            BOOL passed = run.executionCount == 1 && run.skipCount == 0 && run.hasSucceeded;
+            printf("ELIGO_HOST_TEST method=%s executed=%lu skipped=%lu failures=%lu passed=%s fullAccess=%s\n",
+                   method.UTF8String, (unsigned long)run.executionCount, (unsigned long)run.skipCount,
+                   (unsigned long)run.totalFailureCount, passed ? "true" : "false",
+                   NSApp.isFullKeyboardAccessEnabled ? "true" : "false");
+            allPassed = allPassed && passed;
+        }
+        exit(allPassed ? 0 : 1);
     });
 }
 

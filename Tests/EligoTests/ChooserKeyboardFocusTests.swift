@@ -167,8 +167,15 @@ final class ChooserKeyboardFocusTests: XCTestCase {
                 XCTAssertEqual(safari.accessibilityValue() as? String, "Selected")
                 XCTAssertTrue(opened.isEmpty)
 
+                let windowState = "visible=\(panel.isVisible) keyWindow=\(panel.isKeyWindow) active=\(NSApp.isActive)"
+                let fullAccess = NSApp.isFullKeyboardAccessEnabled
                 try pressActivationKey(keyCode, characters: characters, in: panel)
                 XCTAssertEqual(opened, [OpenDestinationID(browserID: browsers[1].id, mode: .privateBrowsing)])
+                if ProcessInfo.processInfo.environment["ELIGO_TAB_PANEL"] == "production" {
+                    let targets = opened.compactMap { $0 }.map { "\($0.browserID)/\($0.mode.rawValue)" }
+                    print("ELIGO_PRIVATE backwards=\(backwards) key=\(keyCode) fullAccess=\(fullAccess) "
+                          + windowState + " deliveries=\(opened.count) targets=\(targets.joined(separator: ","))")
+                }
             }
         }
     }
