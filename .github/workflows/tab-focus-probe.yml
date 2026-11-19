@@ -33,61 +33,81 @@ jobs:
             awk '/error:/ && n++ < 4 {print "::error::" $0}' "$RUNNER_TEMP/build-tests.log"
             exit 1
           fi
-      - name: Compare the same forward Tab test
+      - name: Run the forward Tab case in an AppKit application
         shell: python3 {0}
         run: |
           import os
+          from pathlib import Path
+          import plistlib
           import subprocess
 
-          method = "testTabToNormalRowHighlightsAndActivatesThatBrowser"
-          test_id = f"Test Case '-[EligoTests.ChooserKeyboardFocusTests {method}]'"
-          source = "Tests/EligoTests/ChooserKeyboardFocusTests.swift"
+          def output(*args):
+              return subprocess.check_output(args, text=True).strip()
 
-          def run_case(label, panel, accessory=False):
-              env = dict(os.environ, ELIGO_TAB_PANEL=panel, ELIGO_TAB_ACCESSORY_HOST=str(int(accessory)))
-              run = subprocess.run(
-                  ["swift", "test", "--skip-build", "--filter", f"ChooserKeyboardFocusTests/{method}"],
-                  env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-              )
-              print(f"::group::{label}", flush=True)
-              print(run.stdout, end="", flush=True)
-              print("::endgroup::", flush=True)
-              lines = run.stdout.splitlines()
-              started = [line for line in lines if test_id + " started." in line]
-              ended = [line for line in lines if test_id + " passed (" in line or test_id + " failed (" in line]
+          tmp = Path(os.environ["RUNNER_TEMP"])
+          developer = Path(output("xcrun", "--show-sdk-platform-path")) / "Developer"
+          frameworks = developer / "Library/Frameworks"
+          binary = tmp / "TabTestHost"
+          subprocess.run([
+              "xcrun", "clang", "-fobjc-arc", ".github/diagnostics/TabTestHost.m",
+              "-F", str(frameworks), "-framework", "AppKit", "-framework", "XCTest",
+              *[f"-Wl,-rpath,{p}" for p in (frameworks, developer / "Library/PrivateFrameworks", developer / "usr/lib")],
+              "-o", str(binary),
+          ], check=True)
+          bundle = Path(output("swift", "build", "--show-bin-path")) / "EligoPackageTests.xctest"
+
+          def make_app(policy):
+              app = tmp / f"TabHost-{policy}.app"
+              contents = app / "Contents"
+              (contents / "MacOS").mkdir(parents=True)
+              (contents / "MacOS/TabTestHost").write_bytes(binary.read_bytes())
+              (contents / "MacOS/TabTestHost").chmod(0o755)
+              (contents / "Info.plist").write_bytes(plistlib.dumps(dict(
+                  CFBundleExecutable="TabTestHost", CFBundleIdentifier=f"io.github.xwaynedx.eligo.tabtest.{policy}",
+                  CFBundleName="Tab Test Host", CFBundlePackageType="APPL", CFBundleVersion="1",
+                  LSUIElement=(policy == "accessory"),
+              )))
+              subprocess.run(["codesign", "--force", "--sign", "-", str(app)], check=True)
+              return app
+
+          def run_case(app, setting):
+              label = f"{app.stem} - {setting}"
+              stdout = tmp / f"{label}.out"
+              stderr = tmp / f"{label}.err"
+              stdout.touch()
+              stderr.touch()
+              launched = subprocess.run([
+                  "open", "-n", "-W", "--stdout", str(stdout), "--stderr", str(stderr),
+                  "--env", "ELIGO_TAB_PANEL=production", "--env", f"ELIGO_TAB_TEST_BUNDLE={bundle}",
+                  "-a", str(app),
+              ], timeout=60)
+              lines = (stdout.read_text() + "\n" + stderr.read_text()).splitlines()
+              print(f"::group::{label}", *lines, "::endgroup::", sep="\n", flush=True)
               traces = [line for line in lines if line.startswith("ELIGO_TAB ")]
-              valid = (len(started) == len(ended) == 1
-                       and len(traces) == 2
-                       and traces[0].startswith("ELIGO_TAB before ")
-                       and traces[1].startswith("ELIGO_TAB after "))
-              errors = [line for line in lines if ": error:" in line and method in line]
-              status = "passed" if valid and run.returncode == 0 else "failed"
-              details = " | ".join(line.removeprefix("ELIGO_TAB ") for line in traces)
-              level = "notice" if valid else "error"
-              print(f"::{level} file={source},title={label}::{status}, exit={run.returncode}, "
-                    f"started={len(started)}, finished={len(ended)}, assertionsFailed={len(errors)} | {details}", flush=True)
-              if not valid:
+              result = [line for line in lines if line.startswith("ELIGO_HOST_TEST ")]
+              assertions = list(dict.fromkeys(line for line in lines if line.startswith("ELIGO_HOST_ASSERT ")))
+              if launched.returncode or len(traces) != 2 or len(result) != 1 or "executed=1 skipped=0" not in result[0]:
+                  detail = " | ".join(lines[-5:]) or f"open returned {launched.returncode}"
+                  print(f"::error title={label}::Missing test outcome: {detail}", flush=True)
                   raise SystemExit(2)
-              return status, traces[-1]
+              message = " | ".join(result + traces + assertions[:2])
+              print(f"::notice file=Tests/EligoTests/ChooserKeyboardFocusTests.swift,title={label}::{message}", flush=True)
+              return "passed=true" in result[0], traces[-1]
 
-          hidden, _ = run_case("Default - captured test panel", "capture")
-          shown, trace = run_case("Default - production display", "production")
-          accessory = "key=true" not in trace or "active=true" not in trace
-          if accessory:
-              shown, trace = run_case("Default - production display in accessory app", "production", True)
-
-          if hidden == shown:
-              # Vary only the disposable runner's keyboard navigation setting. Each test starts a fresh process.
-              key = "AppleKeyboardUIMode"
-              original = subprocess.run(["defaults", "read", "-g", key], capture_output=True, text=True)
-              initial = int(original.stdout.strip()) if original.returncode == 0 else 0
-              mode = initial & ~2 if "fullAccess=true" in trace else initial | 2
-              try:
-                  subprocess.run(["defaults", "write", "-g", key, "-int", str(mode)], check=True)
-                  run_case(f"Keyboard mode {mode} - captured test panel", "capture")
-                  run_case(f"Keyboard mode {mode} - production display", "production", accessory)
-              finally:
-                  restore = ["write", "-g", key, "-int", str(initial)] if original.returncode == 0 else ["delete", "-g", key]
-                  subprocess.run(["defaults", *restore], check=True)
-
-          raise SystemExit(int(hidden != "passed" or shown != "passed"))
+          app = make_app("accessory")
+          default_passed, trace = run_case(app, "runner default")
+          if "key=true" not in trace or "active=true" not in trace:
+              app = make_app("regular")
+              default_passed, trace = run_case(app, "runner default")
+          pref = "AppleKeyboardUIMode"
+          read = subprocess.run(["defaults", "read", "-g", pref], capture_output=True, text=True)
+          original = int(read.stdout) if read.returncode == 0 else 0
+          mode = original & ~2 if "fullAccess=true" in trace else original | 2
+          try:
+              subprocess.run(["defaults", "write", "-g", pref, "-int", str(mode)], check=True)
+              changed_passed, changed_trace = run_case(app, f"keyboard mode {mode}")
+          finally:
+              restore = ["write", "-g", pref, "-int", str(original)] if read.returncode == 0 else ["delete", "-g", pref]
+              subprocess.run(["defaults", *restore], check=True)
+          active = all("key=true" in entry and "active=true" in entry for entry in [trace, changed_trace])
+          raise SystemExit(int(not (default_passed and changed_passed and active)))

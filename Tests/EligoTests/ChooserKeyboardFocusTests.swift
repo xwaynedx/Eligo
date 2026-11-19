@@ -332,7 +332,10 @@ final class ChooserKeyboardFocusTests: XCTestCase {
             if let panel = displayedPanel {
                 let deadline = Date(timeIntervalSinceNow: 2)
                 while (!panel.isKeyWindow || !NSApp.isActive) && Date() < deadline {
-                    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
+                    if let event = NSApp.nextEvent(matching: .any, until: Date(timeIntervalSinceNow: 0.02),
+                                                   inMode: .default, dequeue: true) {
+                        NSApp.sendEvent(event)
+                    }
                 }
             }
         }
