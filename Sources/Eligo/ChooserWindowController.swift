@@ -231,6 +231,8 @@ final class ChooserWindowController: NSObject, NSWindowDelegate {
         panel.alphaValue = 0
         self.panel = panel
         currentChooserView = contentView as? ChooserView
+        // 告诉 AppKit 从选择器开始，首次显示时沿用已设置的 Tab 顺序。
+        panel.initialFirstResponder = currentChooserView
         isCompleting = false
 
         if selectionCompletion != nil {

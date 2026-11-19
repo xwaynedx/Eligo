@@ -81,6 +81,8 @@ final class ChooserView: NSVisualEffectView {
         true
     }
 
+    override var canBecomeKeyView: Bool { !isHiddenOrHasHiddenAncestor }
+
     override func setFrameSize(_ newSize: NSSize) {
         if newSize != frame.size {
             rowToReveal = row(containing: focusedAction)
@@ -607,6 +609,7 @@ private final class BrowserRowView: NSControl {
     }
 
     override var acceptsFirstResponder: Bool { isEnabled }
+    override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
 
     override func becomeFirstResponder() -> Bool {
         guard isEnabled, super.becomeFirstResponder() else { return false }
@@ -807,6 +810,8 @@ private final class BrowserRowView: NSControl {
 
 @MainActor
 private final class PrivateModeButton: NSButton {
+    override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+
     var onFocusChanged: ((NSView, Bool) -> Void)?
     var isRowSelected = false {
         didSet { needsDisplay = true }
@@ -931,6 +936,8 @@ private extension ChooserView {
 }
 
 private final class ChooserActionButton: NSButton {
+    override var canBecomeKeyView: Bool { isEnabled && !isHiddenOrHasHiddenAncestor }
+
     var onKeyDown: ((NSEvent) -> Bool)?
 
     override func accessibilityPerformPress() -> Bool {
