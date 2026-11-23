@@ -14,7 +14,7 @@ final class BrowserSettingsIntegrationTests: XCTestCase {
         app.accessibilitySetValue(true, forAttribute: enhancedUI)
         defer { app.accessibilitySetValue(wasEnhanced, forAttribute: enhancedUI) }
 
-        for (editingScope, outcome) in [(false, "save"), (true, "cancel"), (false, "close"), (true, "recovery")] {
+        for (editingScope, outcome) in [(false, "save"), (true, "cancel"), (false, "close"), (true, "recovery"), (true, "queuedUnavailable")] {
             let fixture = try BrowserSettingsFixture()
             defer { fixture.cleanup() }
             let settings = SettingsWindowController(
@@ -70,6 +70,10 @@ final class BrowserSettingsIntegrationTests: XCTestCase {
             XCTAssertTrue(launcher.openedURLs.isEmpty)
             XCTAssertEqual(panels.count, 1)
 
+            let target = try XCTUnwrap(fixture.repository.enabledBrowsers.first)
+            if outcome == "queuedUnavailable" {
+                XCTAssertTrue(fixture.repository.setEnabled(false, for: target.id).wasAccepted)
+            }
             let originalCancel = try await accessibilityElement(in: originalSheet, text: "Cancel")
             XCTAssertTrue(originalCancel.accessibilityPerformPress?() ?? false)
             try await waitForSettingsUI { window.attachedSheet != nil && window.attachedSheet !== originalSheet }
@@ -77,8 +81,10 @@ final class BrowserSettingsIntegrationTests: XCTestCase {
             XCTAssertTrue(rulesSession.state.isEditingPendingLink)
             XCTAssertEqual(panels.count, 1)
 
+            if outcome == "queuedUnavailable" {
+                _ = try await accessibilityElement(in: handoffSheet, text: "\(target.name) (unavailable)")
+            }
             // Withdraw the destination on the successful write, before the sheet's dismissal receipt.
-            let target = try XCTUnwrap(fixture.repository.enabledBrowsers.first)
             var lostDestination = false
             let subscription = fixture.routing.$settings.dropFirst().sink { _ in
                 if outcome == "recovery" {
@@ -95,8 +101,9 @@ final class BrowserSettingsIntegrationTests: XCTestCase {
 
             try await waitForSettingsUI { panels.count == 2 }
             let followUp = try XCTUnwrap(panels.last)
-            if outcome == "recovery" {
-                XCTAssertTrue(lostDestination)
+            let requiresRecovery = outcome == "recovery" || outcome == "queuedUnavailable"
+            if requiresRecovery {
+                if outcome == "recovery" { XCTAssertTrue(lostDestination) }
                 XCTAssertTrue(launcher.openedURLs.isEmpty)
                 let recoveryView = try XCTUnwrap(followUp.contentView)
                 let another = try XCTUnwrap(descendants(of: recoveryView).compactMap { $0 as? NSButton }
@@ -109,15 +116,66 @@ final class BrowserSettingsIntegrationTests: XCTestCase {
                 XCTAssertTrue(launcher.openedURLs.isEmpty)
                 let resumed = try XCTUnwrap(panels.last)
                 resumed.sendEvent(chooserKeyEvent(keyCode: 36, characters: "\r", windowNumber: resumed.windowNumber))
-                try await waitForSettingsUI { panels.count == (outcome == "recovery" ? 4 : 3) }
+                try await waitForSettingsUI { panels.count == (requiresRecovery ? 4 : 3) }
             }
             XCTAssertEqual(launcher.openedURLs, [a.url])
             let second = try XCTUnwrap(panels.last)
             second.sendEvent(chooserKeyEvent(keyCode: 36, characters: "\r", windowNumber: second.windowNumber))
             XCTAssertEqual(launcher.openedURLs, [a.url, b.url])
             XCTAssertEqual(fixture.routing.settings.rules.map(\.matcher.normalizedHost),
-                           ["save", "recovery"].contains(outcome) ? ["first.example"] : [])
+                           ["save", "recovery", "queuedUnavailable"].contains(outcome) ? ["first.example"] : [])
         }
+    }
+
+    func testInlineRebindClearsFilterForLastRuleOfDisabledBrowser() async throws {
+        let app = NSApplication.shared
+        let enhancedUI = NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface")
+        let wasEnhanced = app.accessibilityAttributeValue(enhancedUI) as? Bool ?? false
+        app.accessibilitySetValue(true, forAttribute: enhancedUI)
+        defer { app.accessibilitySetValue(wasEnhanced, forAttribute: enhancedUI) }
+        let fixture = try BrowserSettingsFixture()
+        defer { fixture.cleanup() }
+        let browsers = fixture.repository.enabledBrowsers
+        let old = OpenDestination(browser: browsers[0], mode: .normal)
+        let new = OpenDestination(browser: browsers[1], mode: .normal)
+        XCTAssertTrue(fixture.repository.setEnabled(false, for: old.browser.id).wasAccepted)
+        let rule = DomainRule(matcher: try DomainMatcher(host: "filter.example", includesSubdomains: false), destinationID: old.id)
+        let other = DomainRule(matcher: try DomainMatcher(host: "other.example", includesSubdomains: false), destinationID: new.id)
+        try fixture.routing.replace(with: RoutingSettings(scope: .allDomains, rules: [rule, other], alwaysShowChooser: false))
+        let controller = SettingsWindowController(
+            browserRepository: fixture.repository, routingPreferencesStore: fixture.routing,
+            appLanguageStore: fixture.language, launchAtLoginController: LaunchAtLoginController(service: fixture.launchService),
+            defaultBrowserController: DefaultBrowserController(manager: fixture.defaultHandlers, bundleIdentifier: "test.eligo"),
+            applicationPresentationController: ApplicationPresentationController(application: BrowserTestApplication())
+        )
+        controller.selectedSection = .rules
+        controller.show()
+        defer { controller.close() }
+        let window = try XCTUnwrap(controller.window)
+        let root = try XCTUnwrap(window.contentView)
+        func popup(showing title: String) -> NSPopUpButton? {
+            descendants(of: root).compactMap { $0 as? NSPopUpButton }.first { $0.titleOfSelectedItem == title }
+        }
+        func select(_ title: String, in popup: NSPopUpButton) throws {
+            let menu = try XCTUnwrap(popup.menu)
+            menu.update()
+            let index = menu.indexOfItem(withTitle: title)
+            XCTAssertGreaterThanOrEqual(index, 0)
+            guard index >= 0 else { return }
+            popup.selectItem(at: index)
+            if menu.item(at: index)?.action != nil {
+                menu.performActionForItem(at: index)
+            } else {
+                XCTAssertTrue(popup.sendAction(popup.action, to: popup.target))
+            }
+        }
+        try await waitForSettingsUI { popup(showing: "All browsers") != nil }
+        try select(old.browser.name, in: XCTUnwrap(popup(showing: "All browsers")))
+        _ = try await accessibilityElement(in: window, text: "1 of 2 rules · 0 selected")
+        try select(new.browser.name, in: XCTUnwrap(popup(showing: "\(old.browser.name) (unavailable)")))
+        _ = try await accessibilityElement(in: window, text: "2 of 2 rules · 0 selected")
+        XCTAssertNotNil(popup(showing: "All browsers"))
+        XCTAssertEqual(RoutingPreferencesStore(userDefaults: fixture.defaults).settings.rules.first { $0.id == rule.id }?.destinationID, new.id)
     }
 
     func testGeneralRendersBrowserRepairWhenNoBrowserIsEnabled() async throws {

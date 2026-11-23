@@ -318,6 +318,36 @@ final class ActivationQueueIntegrationTests: XCTestCase {
         }
     }
 
+    func testNormalQueueFollowsDeliveredPIDWhenRecipientExitsBeforeOrAfterDiscovery() async throws {
+        for alreadyExited in [true, false] {
+            let fixture = try ActivationQueueFixture()
+            defer { fixture.cleanup() }
+            let recipient = NSRunningApplication.current
+            let target = ControlledActivationApplication(processIdentifier: recipient.processIdentifier)
+            target.isTerminated = alreadyExited
+            let other = ControlledActivationApplication()
+            fixture.system.application = other
+            fixture.system.preferredApplications[recipient.processIdentifier] = target
+            fixture.workspace.recipient = recipient
+            fixture.enqueue(2)
+            await fixture.routeTasks[0].value
+            try fixture.chooserView(0).onSelect?(OpenDestination(browser: fixture.browser, mode: .normal))
+
+            if !alreadyExited {
+                fixture.system.emit(.terminated(bundleIdentifier: fixture.browser.bundleIdentifier, processIdentifier: other.processIdentifier))
+                XCTAssertEqual(fixture.routeTasks.count, 1)
+                fixture.system.emit(.terminated(bundleIdentifier: fixture.browser.bundleIdentifier, processIdentifier: target.processIdentifier))
+            }
+            let second = try XCTUnwrap(fixture.routeTasks.dropFirst().first)
+            await second.value
+            XCTAssertEqual(other.activationCount, 0)
+            XCTAssertEqual(target.activationCount, alreadyExited ? 0 : 1)
+            XCTAssertEqual(fixture.workspace.deliveredURLs.map(\.absoluteString), ["https://example.com/1"])
+            try fixture.chooserView(1).onCancel?()
+            XCTAssertEqual(fixture.completed, 2)
+        }
+    }
+
     func testNormalForegroundHandoffIsImmediateWhenWarmAndGuardsLateColdActivation() async throws {
         for warm in [true, false] {
             let fixture = try ActivationQueueFixture()
@@ -432,11 +462,12 @@ private final class ActivationQueueFixture {
 
 @MainActor
 private final class DeliveredWorkspace: WorkspaceOpening {
+    var recipient: NSRunningApplication?
     var deliveredURLs: [URL] = []
-    func openURLs(_ urls: [URL], withApplicationAt applicationURL: URL, completion: @escaping @MainActor (Bool) -> Void) {
+    func openURLs(_ urls: [URL], withApplicationAt applicationURL: URL, completion: @escaping @MainActor (Bool, NSRunningApplication?) -> Void) {
         deliveredURLs += urls
-        completion(true)
-        completion(true) // Even a duplicated delivery callback must be idempotent.
+        completion(true, recipient)
+        completion(true, recipient) // Even a duplicated delivery callback must be idempotent.
     }
     func openApplication(at applicationURL: URL, arguments: [String], createsNewApplicationInstance: Bool, completion: @escaping @MainActor (Bool, NSRunningApplication?) -> Void) {
         completion(true, nil)

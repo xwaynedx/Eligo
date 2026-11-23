@@ -843,7 +843,7 @@ final class LinkRoutingCoordinatorTests: XCTestCase {
         await task.value
 
         XCTAssertEqual(chooser.presentedRecentBrowserID, safari.id)
-        XCTAssertEqual(chooser.routingHint, .init(destinationID: destinationID, matchedDomain: "example.com"))
+        XCTAssertEqual(chooser.routingHint, .domainRule(destinationID, domain: "example.com"))
     }
 
     func testUnavailableRuleDestinationEntersRecoveryWithoutFallback() async throws {

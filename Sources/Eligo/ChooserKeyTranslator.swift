@@ -34,15 +34,25 @@ struct ChooserKeyTranslator: Sendable {
         case selectByLetter(Character)
     }
 
+    static let escape: UInt16 = 53
+    static let tab: UInt16 = 48
+    static let space: UInt16 = 49
+
+    static func isConfirm(_ keyCode: UInt16) -> Bool { keyCode == 36 || keyCode == 76 }
+
+    static func isCommandConfirm(_ keyCode: UInt16, command: Bool) -> Bool {
+        command && isConfirm(keyCode)
+    }
+
     /// Map a key input to an intent, or `nil` when the input is not a selection command (Tab,
     /// unrecognised keys). The mapping is total over the legacy ChooserView command set.
     static func intent(for input: KeyInput) -> Intent? {
         switch input.keyCode {
-        case 53:
+        case escape:
             return .cancel
-        case 36, 76:
+        case let code where isConfirm(code):
             return input.shiftHeld ? .shiftChoose : .choose
-        case 48:
+        case tab:
             // Tab is left to the key-view loop for keyboard accessibility.
             return nil
         case 125:
@@ -60,15 +70,16 @@ struct ChooserKeyTranslator: Sendable {
         }
     }
 
+    // Shift changes the printed character (1 -> !). macOS virtual key codes
+    // are not contiguous in numeric order; include the numeric keypad too.
+    private static let numberKeys: [UInt16: Int] = [
+        18: 0, 19: 1, 20: 2, 21: 3, 23: 4,
+        22: 5, 26: 6, 28: 7, 25: 8, 29: 9,
+        83: 0, 84: 1, 85: 2, 86: 3, 87: 4,
+        88: 5, 89: 6, 91: 7, 92: 8, 82: 9
+    ]
+
     private static func numberIndex(from input: KeyInput) -> Int? {
-        // Shift changes the printed character (1 -> !). macOS virtual key codes
-        // are not contiguous in numeric order; include the numeric keypad too.
-        let numberKeys: [UInt16: Int] = [
-            18: 0, 19: 1, 20: 2, 21: 3, 23: 4,
-            22: 5, 26: 6, 28: 7, 25: 8, 29: 9,
-            83: 0, 84: 1, 85: 2, 86: 3, 87: 4,
-            88: 5, 89: 6, 91: 7, 92: 8, 82: 9
-        ]
         if input.shiftHeld, let index = numberKeys[input.keyCode] { return index }
         guard let characters = input.charactersIgnoringModifiers, characters.count == 1 else { return nil }
         guard let value = Int(characters), (0...9).contains(value) else { return nil }

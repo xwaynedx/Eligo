@@ -8,13 +8,13 @@ final class RoutingPolicyTests: XCTestCase {
         let url = URL(string: "https://docs.example.com/path")!
         let rule = DomainRule(matcher: try DomainMatcher(host: "example.com", includesSubdomains: true), destinationID: privateDestination)
         let settings = try RoutingSettings(scope: .allDomains, rules: [rule], alwaysShowChooser: true)
-        XCTAssertEqual(policy.chooserHint(for: url, settings: settings), .init(destinationID: privateDestination, matchedDomain: "example.com"))
+        XCTAssertEqual(policy.chooserHint(for: url, settings: settings), .domainRule(privateDestination, domain: "example.com"))
         let exactRule = DomainRule(matcher: try DomainMatcher(host: "docs.example.com", includesSubdomains: false), destinationID: normalDestination)
         let overlapping = try settings.replacing(rules: [rule, exactRule])
-        XCTAssertEqual(policy.chooserHint(for: url, settings: overlapping), .init(destinationID: normalDestination, matchedDomain: "docs.example.com"))
+        XCTAssertEqual(policy.chooserHint(for: url, settings: overlapping), .domainRule(normalDestination, domain: "docs.example.com"))
         XCTAssertNil(policy.chooserHint(for: url, settings: try settings.replacing(alwaysShowChooser: false)))
         let bypass = try RoutingSettings(scope: .onlyThese(matchers: [], bypassDestinationID: normalDestination), rules: [rule], alwaysShowChooser: true)
-        XCTAssertEqual(policy.chooserHint(for: url, settings: bypass), .init(destinationID: normalDestination, matchedDomain: nil))
+        XCTAssertEqual(policy.chooserHint(for: url, settings: bypass), .bypass(normalDestination))
         XCTAssertNil(policy.chooserHint(for: URL(fileURLWithPath: "/tmp/test.html"), settings: settings))
         XCTAssertNil(policy.chooserHint(for: URL(string: "https://unmatched.test")!, settings: settings))
     }

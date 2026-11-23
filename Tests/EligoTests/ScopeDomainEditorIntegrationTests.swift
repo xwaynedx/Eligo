@@ -30,7 +30,7 @@ final class ScopeDomainEditorIntegrationTests: XCTestCase {
                                   styleMask: [.titled], backing: .buffered, defer: false)
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: RuleEditorSheet(
-                draft: draft, rules: [rule], destinations: [destination], appLanguageStore: language,
+                draft: draft, rules: [rule], destinationContext: .init(destinations: [destination], browserNames: [:], appLanguageStore: language),
                 opensPendingLink: session.state.isEditingPendingLink
             ) { (submission: RuleEditorDraft) throws(DomainRuleSettingsDisplayError) -> Void in
                 try DomainRuleSettingsAdapter.commitSingle(item: item, draft: submission, session: session)
@@ -164,7 +164,8 @@ final class ScopeDomainEditorIntegrationTests: XCTestCase {
                               styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: RuleEditorSheet(
-            draft: draft, rules: [], destinations: [OpenDestination(browser: fixture.browser, mode: .normal)], appLanguageStore: language
+            draft: draft, rules: [], destinationContext: .init(
+                destinations: [OpenDestination(browser: fixture.browser, mode: .normal)], browserNames: [:], appLanguageStore: language)
         ) { _ in
             XCTFail("Editing and closing the rule draft must not invoke Save")
         })

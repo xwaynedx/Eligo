@@ -62,11 +62,11 @@ struct RuleEditorDraft: Identifiable {
 struct RuleEditorSheet: View, AppLocalizing {
     @Environment(\.dismiss) private var dismiss
     let rules: [DomainRule]
-    let destinations: [OpenDestination]
+    let destinationContext: RuleDestinationContext
     let hasDeferredChooserRequest: Bool
     let opensPendingLink: Bool
     let onSave: (RuleEditorDraft) throws(DomainRuleSettingsDisplayError) -> Void
-    @ObservedObject var appLanguageStore: AppLanguageStore
+    var appLanguageStore: AppLanguageStore { destinationContext.appLanguageStore }
     @State private var draft: RuleEditorDraft
     @State private var saveFailure: DomainRuleSettingsDisplayError?
 
@@ -96,18 +96,16 @@ struct RuleEditorSheet: View, AppLocalizing {
     init(
         draft: RuleEditorDraft,
         rules: [DomainRule],
-        destinations: [OpenDestination],
-        appLanguageStore: AppLanguageStore,
+        destinationContext: RuleDestinationContext,
         hasDeferredChooserRequest: Bool = false,
         opensPendingLink: Bool = false,
         onSave: @escaping (RuleEditorDraft) throws(DomainRuleSettingsDisplayError) -> Void
     ) {
         self.rules = rules
-        self.destinations = destinations
+        self.destinationContext = destinationContext
         self.hasDeferredChooserRequest = hasDeferredChooserRequest
         self.opensPendingLink = opensPendingLink
         self.onSave = onSave
-        self.appLanguageStore = appLanguageStore
         _draft = State(initialValue: draft)
     }
 
@@ -127,14 +125,17 @@ struct RuleEditorSheet: View, AppLocalizing {
 
             Picker(t("Open Destination"), selection: $draft.destinationID) {
                 Text(t("Choose a destination")).tag(Optional<OpenDestinationID>.none)
+                if let id = draft.destinationID, !destinationContext.destinations.contains(where: { $0.id == id }) {
+                    Text(destinationContext.unavailableDestinationTitle(id)).tag(Optional(id))
+                }
                 OpenDestinationPickerOptions(
-                    destinations: destinations,
+                    destinations: destinationContext.destinations,
                     appLanguageStore: appLanguageStore,
                     tag: Optional.some
                 )
             }
 
-            if let message = creationPlan?.message(destinations: destinations, using: appLanguageStore) {
+            if let message = creationPlan?.message(destinations: destinationContext.destinations, using: appLanguageStore) {
                 Text(message)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)

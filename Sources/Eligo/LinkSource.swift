@@ -41,12 +41,11 @@ enum LinkSource: Equatable, Sendable {
         }
     }
 
-    /// The bundle identifier disambiguates same-named apps and gives support
-    /// reports something greppable; falls back to the app name when absent.
+    /// 悬停时显示完整应用名，并在下一行显示可用的 bundle ID。
     var toolTip: String? {
         switch self {
         case let .app(sender):
-            sender.bundleIdentifier ?? sender.name
+            sender.bundleIdentifier.map { "\(sender.name)\n\($0)" } ?? sender.name
         case .unknown:
             nil
         }

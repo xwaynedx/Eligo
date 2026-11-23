@@ -63,7 +63,7 @@ struct DomainRuleSettingsPresentationRelay {
     ///
     /// Returns `true` when the caller must defer re-presentation by one runloop turn: assigning
     /// a new sheet item synchronously inside the previous sheet's dismissal chain makes SwiftUI
-    /// stack a sheet detached from its binding (the zombie sheet of settings-sheet-zombie/01).
+    /// stack a sheet detached from its binding.
     /// The defer marker is consumed by every call, so the deferred retry assigns normally.
     mutating func synchronize(
         with presentation: DomainRuleSettingsSession.Presentation?,
@@ -166,9 +166,8 @@ struct DomainRuleSettingsAdapter: View {
     @ObservedObject var session: DomainRuleSettingsSession
     let rules: [DomainRule]
     let scope: RoutingScope
-    let destinations: [OpenDestination]
-    let browserNames: [Browser.ID: String]
-    @ObservedObject var appLanguageStore: AppLanguageStore
+    let destinationContext: RuleDestinationContext
+    private var appLanguageStore: AppLanguageStore { destinationContext.appLanguageStore }
     let onEffect: (DomainRuleSettingsSession.Effect) -> Void
     let onEditRoutingScope: () -> Void
     @State private var presentationRelay = DomainRuleSettingsPresentationRelay()
@@ -177,8 +176,7 @@ struct DomainRuleSettingsAdapter: View {
         RulesSettingsView(
             rules: rules,
             scope: scope,
-            destinations: destinations,
-            browserNames: browserNames,
+            destinationContext: destinationContext,
             selectedRuleIDs: session.state.selectedRuleIDs,
             message: Self.pageMessage(
                 for: session.state.pageFailure,
@@ -187,8 +185,7 @@ struct DomainRuleSettingsAdapter: View {
             onAction: {
                 Self.send($0, to: session, onEffect: onEffect)
             },
-            onEditRoutingScope: onEditRoutingScope,
-            appLanguageStore: appLanguageStore
+            onEditRoutingScope: onEditRoutingScope
         )
         .onAppear(perform: synchronizePresentation)
         .onChange(of: session.state.presentation) { _, _ in
@@ -200,8 +197,7 @@ struct DomainRuleSettingsAdapter: View {
                 RuleEditorSheet(
                     draft: singleItem.draft,
                     rules: rules,
-                    destinations: destinations,
-                    appLanguageStore: appLanguageStore,
+                    destinationContext: destinationContext,
                     hasDeferredChooserRequest: session.state.hasDeferredChooserRequest,
                     opensPendingLink: session.state.isEditingPendingLink,
                     onSave: { (draft: RuleEditorDraft) throws(DomainRuleSettingsDisplayError) -> Void in
@@ -214,7 +210,7 @@ struct DomainRuleSettingsAdapter: View {
                 )
             case let .bulk(bulkItem):
                 BatchRuleEditorSheet(
-                    destinations: destinations,
+                    destinations: destinationContext.destinations,
                     appLanguageStore: appLanguageStore,
                     hasDeferredChooserRequest: session.state.hasDeferredChooserRequest,
                     onSave: {
@@ -256,17 +252,17 @@ struct DomainRuleSettingsAdapter: View {
         if presentationRelay.synchronize(
             with: session.state.presentation,
             rules: rules,
-            destinations: destinations
+            destinations: destinationContext.destinations
         ) {
             // Re-presenting a sheet synchronously inside the previous sheet's dismissal chain
-            // produces a zombie sheet detached from its binding (settings-sheet-zombie/01).
+            // produces a zombie sheet detached from its binding.
             // Defer one runloop turn and re-read the latest Session state so interleaved changes
             // (windowClosed, a newer deferred request) are honoured.
             DispatchQueue.main.async {
                 _ = presentationRelay.synchronize(
                     with: session.state.presentation,
                     rules: rules,
-                    destinations: destinations
+                    destinations: destinationContext.destinations
                 )
             }
         }

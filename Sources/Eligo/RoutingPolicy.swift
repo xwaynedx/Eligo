@@ -3,9 +3,7 @@ import Foundation
 struct RoutingPolicy {
     func chooserHint(for url: URL, settings: RoutingSettings) -> ChooserRoutingHint? {
         guard settings.alwaysShowChooser else { return nil }
-        let base = resolve(for: url, settings: settings)
-        guard case let .open(destinationID, _) = base.plan else { return nil }
-        return ChooserRoutingHint(destinationID: destinationID, matchedDomain: base.matchedDomain)
+        return resolve(for: url, settings: settings).hint
     }
 
     func plan(for url: URL, settings: RoutingSettings) -> RoutingPlan {
@@ -19,7 +17,7 @@ struct RoutingPolicy {
         resolve(for: url, settings: settings).plan
     }
 
-    private func resolve(for url: URL, settings: RoutingSettings) -> (plan: RoutingPlan, matchedDomain: String?) {
+    private func resolve(for url: URL, settings: RoutingSettings) -> (plan: RoutingPlan, hint: ChooserRoutingHint?) {
         if url.isFileURL {
             return (.choose(reason: .localFile), nil)
         }
@@ -28,9 +26,10 @@ struct RoutingPolicy {
         }
 
         if !settings.scope.contains(host), let bypassDestinationID = settings.scope.bypassDestinationID {
-            return (.open(destinationID: bypassDestinationID, reason: .bypassed), nil)
+            return (.open(destinationID: bypassDestinationID, reason: .bypassed), .bypass(bypassDestinationID))
         } else if let rule = mostSpecificRule(matching: host, rules: settings.rules) {
-            return (.open(destinationID: rule.destinationID, reason: .domainRule), rule.matcher.normalizedHost)
+            return (.open(destinationID: rule.destinationID, reason: .domainRule),
+                    .domainRule(rule.destinationID, domain: rule.matcher.normalizedHost))
         } else {
             return (.choose(reason: .noMatchingRule), nil)
         }
@@ -52,9 +51,15 @@ struct RoutingPolicy {
 }
 
 /// Informational only: Recent Browser continues to own the initial selection.
-struct ChooserRoutingHint: Equatable, Sendable {
-    let destinationID: OpenDestinationID
-    let matchedDomain: String?
+enum ChooserRoutingHint: Equatable, Sendable {
+    case domainRule(OpenDestinationID, domain: String)
+    case bypass(OpenDestinationID)
+
+    var destinationID: OpenDestinationID {
+        switch self {
+        case let .domainRule(id, _), let .bypass(id): id
+        }
+    }
 }
 
 enum RoutingPlan: Equatable, Sendable {

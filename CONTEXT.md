@@ -25,7 +25,7 @@ A temporarily exposed Open Destination used for real-app validation before a bro
 _Avoid_: Supported Private Destination
 
 **Browser Chooser**:
-The transient interface in which the user selects an Open Destination for one link.
+The transient interface in which the user selects an Open Destination for one link. Its browser list is the set of Installed Browser rows inside the chooser.
 _Avoid_: Browser list, picker popup
 
 **Link Source**:
@@ -41,11 +41,11 @@ A link outside the Routing Scope that opens directly in the Bypass Destination w
 _Avoid_: Blocked link, ignored link
 
 **Bypass Destination**:
-The normal Open Destination used for Bypassed Links.
+The normal Open Destination used for Bypassed Links. The Browser Chooser labels it “Out-of-scope default destination”（范围外默认目标）.
 _Avoid_: System default browser
 
 **Domain Rule**:
-A domain matcher that opens an Open Destination directly, unless Always Show Chooser is enabled.
+A domain matcher that opens an Open Destination directly, unless Always Show Chooser is enabled. The chooser labels its destination “Rule target”（规则目标）. In the rule editor, “both scopes” (两种范围) means keeping two Domain Rules for the same host with different Open Destinations. The exact-host rule handles the host itself. The rule that includes subdomains sets their default destination unless a more specific rule matches.
 _Avoid_: Routing Scope entry, browser default
 
 **Always Show Chooser**:

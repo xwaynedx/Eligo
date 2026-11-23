@@ -47,7 +47,8 @@ final class ChooserKeyboardFocusTests: XCTestCase {
             (.normal, nil, "范围外默认目标：Google Chrome（普通）")
         ]
         for (mode, matchedDomain, tooltip) in cases {
-            let hint = ChooserRoutingHint(destinationID: .init(browserID: browsers[1].id, mode: mode), matchedDomain: matchedDomain)
+            let target = OpenDestinationID(browserID: browsers[1].id, mode: mode)
+            let hint = matchedDomain.map { ChooserRoutingHint.domainRule(target, domain: $0) } ?? .bypass(target)
             let view = ChooserView(link: IncomingLink(url: URL(string: "https://github.com/openai/codex/pull/42?tab=files#discussion")!),
                 destinations: DestinationCatalog(enabledBrowsers: browsers).destinations, recentBrowserID: browsers[0].id,
                 routingHint: hint, language: .simplifiedChinese)
@@ -69,6 +70,20 @@ final class ChooserKeyboardFocusTests: XCTestCase {
             view.onSelect = { selected = $0.id }
             _ = view.handleKeyDown(chooserKeyEvent(keyCode: 36, characters: "\r"))
             XCTAssertEqual(selected, OpenDestinationID(browserID: browsers[0].id, mode: .normal))
+            if mode == .privateBrowsing {
+                let marker = try XCTUnwrap(markers.first)
+                let button = try XCTUnwrap(browserChooserPrivateButton(in: rows[1]))
+                let point = marker.convert(NSPoint(x: marker.bounds.midX, y: marker.bounds.midY), to: nil)
+                for hidden in [false, true] {
+                    marker.isHidden = hidden
+                    selected = nil
+                    let hit = try XCTUnwrap(view.hitTest(point) as? NSButton)
+                    XCTAssertTrue(hit === button)
+                    hit.performClick(nil)
+                    XCTAssertEqual(selected, target)
+                }
+                marker.isHidden = false
+            }
             if matchedDomain != nil, let directory = ProcessInfo.processInfo.environment["ELIGO_UX_PREVIEW_DIR"] {
                 let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
                 view.cacheDisplay(in: view.bounds, to: bitmap)

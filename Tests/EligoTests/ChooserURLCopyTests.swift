@@ -59,6 +59,62 @@ final class ChooserURLCopyTests: XCTestCase {
         withExtendedLifetime(view) {}
     }
 
+    func testFirstPreviewReflectsCopyAndBothFeedbackStatesHaveTheSameFrame() throws {
+        let pasteboard = NSPasteboard(name: .init("EligoTests.Preview.\(UUID())"))
+        defer { pasteboard.releaseGlobally() }
+        for language in [AppLanguage.english, .simplifiedChinese] {
+            let url = URL(string: "https://example.com/full")!
+            let view = ChooserView(link: IncomingLink(url: url), destinations: [], recentBrowserID: nil,
+                                   language: language, pasteboard: pasteboard)
+            let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            window.contentView = view
+            defer { view.closeURLPreview(); window.close() }
+            view.onSelect = { _ in XCTFail("Copy must not choose a browser") }
+            let button = try copyButton(in: view)
+            let title = try XCTUnwrap(button.superview as? URLTitleView)
+            XCTAssertTrue(button.accessibilityPerformPress())
+            _ = view.handleFlagsChanged(chooserKeyEvent(keyCode: 58, characters: "", modifiers: .option))
+            let content = try XCTUnwrap(window.childWindows?.first?.contentView)
+            content.layoutSubtreeIfNeeded()
+            let copied = AppLanguageStore.localizedText("Link copied", for: language)
+            let ready = AppLanguageStore.localizedText("Copy Full Link", for: language)
+            let previewCopy = try XCTUnwrap(content.subviews.compactMap { $0 as? NSButton }.first { $0.title == copied })
+            let frame = previewCopy.frame
+            let firstTimer = try XCTUnwrap(title.copyFeedbackTimer)
+            firstTimer.fire()
+            XCTAssertEqual(button.toolTip, ready, "The timer must finish the old feedback on this main-actor turn")
+            XCTAssertEqual(previewCopy.title, ready)
+            content.layoutSubtreeIfNeeded()
+            XCTAssertEqual(previewCopy.frame, frame)
+            XCTAssertTrue(button.accessibilityPerformPress())
+            XCTAssertEqual(previewCopy.title, copied)
+        }
+    }
+
+    func testCopyNeverReadsPreviousTextAndFailedWriteKeepsChooserOpen() throws {
+        let pasteboard = CopyTestPasteboard()
+        defer { pasteboard.board.releaseGlobally() }
+        let url = try XCTUnwrap(URL(string: "https://example.com/copy"))
+        let view = ChooserView(link: IncomingLink(url: url), destinations: [], recentBrowserID: nil,
+                               pasteboard: pasteboard)
+        view.onSelect = { _ in XCTFail("Copy must not choose a browser") }
+        view.onCancel = { XCTFail("Copy must not close the chooser") }
+        let button = try copyButton(in: view)
+        for refusesWrite in [false, true] {
+            let oldItem = NSPasteboardItem()
+            XCTAssertTrue(oldItem.setDataProvider(pasteboard, forTypes: [.string]))
+            pasteboard.board.clearContents()
+            XCTAssertTrue(pasteboard.board.writeObjects([oldItem]))
+            pasteboard.rejectedText = refusesWrite ? url.absoluteString : nil
+
+            XCTAssertTrue(button.accessibilityPerformPress())
+            // 写入失败时允许已清空的剪贴板留空，以免为回写旧文本读取用户数据。
+            XCTAssertEqual(pasteboard.board.string(forType: .string), refusesWrite ? nil : url.absoluteString)
+            XCTAssertEqual(button.toolTip, refusesWrite ? "Copy Full Link" : "Link copied")
+        }
+    }
+
     func testExpandedURLWrapsInScrollableChildWindowWithoutChangingChooserSize() throws {
         _ = NSApplication.shared
         let url = URL(string: "https://example.com/" + String(repeating: "long-path/", count: 100) + "?q=one%26two#fragment")!
@@ -129,6 +185,46 @@ final class ChooserURLCopyTests: XCTestCase {
         XCTAssertEqual(cancellations, 0)
         XCTAssertTrue(view.handleKeyDown(chooserKeyEvent(keyCode: 53, characters: "")))
         XCTAssertEqual(cancellations, 1)
+    }
+
+    func testPreviewAtScreenBottomLeavesExpandButtonAccessibleForPinning() throws {
+        let view = ChooserView(link: IncomingLink(url: URL(string: "https://example.com")!), destinations: [], recentBrowserID: nil)
+        view.onSelect = { _ in }
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { view.closeURLPreview(); window.close() }
+        let visible = try XCTUnwrap(NSScreen.main).visibleFrame
+        window.setFrameOrigin(NSPoint(x: visible.midX, y: visible.minY))
+        view.layoutSubtreeIfNeeded()
+        let title = try XCTUnwrap(try copyButton(in: view).superview as? URLTitleView)
+        let expand = title.expandButton
+        let expandFrame = window.convertToScreen(expand.convert(expand.bounds, to: nil))
+        _ = view.handleFlagsChanged(chooserKeyEvent(keyCode: 58, characters: "", modifiers: .option))
+        let panel = try XCTUnwrap(window.childWindows?.first)
+        XCTAssertFalse(panel.frame.intersects(expandFrame))
+        XCTAssertTrue(visible.contains(panel.frame))
+        expand.performClick(nil)
+        _ = view.handleFlagsChanged(chooserKeyEvent(keyCode: 58, characters: ""))
+        XCTAssertTrue(window.childWindows?.first === panel)
+    }
+
+    func testLongBrowserNameFitsItsUncappedNormalOnlyRow() throws {
+        let name = String(repeating: "W", count: 19)
+        let browser = makeBrowser(name: name, bundleIdentifier: "test.wide")
+        let view = ChooserView(link: IncomingLink(url: URL(string: "https://example.com")!),
+                               destinations: [.init(browser: browser, mode: .normal)], recentBrowserID: nil)
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = view
+        defer { window.close() }
+        view.layoutSubtreeIfNeeded()
+        let row = try XCTUnwrap(browserChooserRows(in: view).first)
+        let label = try XCTUnwrap(row.subviews.compactMap { $0 as? NSTextField }.first { $0.stringValue == name })
+        XCTAssertGreaterThan(view.preferredSize.width, 268)
+        XCTAssertLessThan(view.preferredSize.width, 380)
+        let textWidth = (name as NSString).size(withAttributes: [.font: try XCTUnwrap(label.font)]).width
+        XCTAssertGreaterThanOrEqual(label.frame.width, ceil(textWidth))
     }
 
     func testChooserWidthStaysStableAcrossLongHostsPathsAndFileNames() throws {
@@ -221,7 +317,7 @@ final class ChooserURLCopyTests: XCTestCase {
         let pasteboard = NSPasteboard(name: .init("EligoTests.Copy.\(UUID())"))
         defer { pasteboard.releaseGlobally() }
         let url = URL(string: "https://example.com/" + String(repeating: "long-path/", count: 20))!
-        for entersCopyFirst in [true, false] {
+        for (entersCopyFirst, deliversMove) in [(true, false), (false, true), (false, false)] {
             let view = ChooserView(link: IncomingLink(url: url), destinations: [], recentBrowserID: nil, pasteboard: pasteboard)
             view.onSelect = { _ in XCTFail("Copy must not choose a browser") }
             let window = HoverPointerWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
@@ -257,9 +353,11 @@ final class ChooserURLCopyTests: XCTestCase {
             title.mouseEntered(with: try event(.mouseEntered, at: entersCopyFirst ? copyPoint : urlPoint))
             if !entersCopyFirst {
                 // Cross to Copy before the URL's delay expires, without leaving the header.
-                title.mouseMoved(with: try event(.mouseMoved, at: copyPoint))
+                let move = try event(.mouseMoved, at: copyPoint)
+                if deliversMove { title.mouseMoved(with: move) }
             }
             try await Task.sleep(for: .milliseconds(400))
+            XCTAssertTrue(window.childWindows?.isEmpty ?? true, "The timer must sample the pointer even without a move event")
             view.layoutSubtreeIfNeeded()
             XCTAssertEqual(label.stringValue, view.displayURL)
             XCTAssertEqual(button.frame, compactFrame)
@@ -344,6 +442,27 @@ final class ChooserURLCopyTests: XCTestCase {
         }
     }
 
+    func testProductionPanelNavigationDismissesOnlyTemporaryPreviews() throws {
+        let board = NSPasteboard(name: .init("EligoTests.Navigation.\(UUID())"))
+        defer { board.releaseGlobally() }
+        let presentation = try makePresentation(browser: makeBrowser(name: "Safari", bundleIdentifier: "com.apple.Safari"),
+                                                pasteboard: board) { _ in }
+        defer { presentation.view.onCancel?() }
+        let title = try XCTUnwrap(presentation.copy.superview as? URLTitleView)
+        for (code, chars, flags): (UInt16, String, NSEvent.ModifierFlags) in
+            [(48, "\t", []), (48, "\t", .shift), (125, "", []), (126, "", []), (1, "s", [])] {
+            title.setOptionHeld(true)
+            XCTAssertNotNil(presentation.panel.childWindows?.first)
+            presentation.panel.sendEvent(chooserKeyEvent(keyCode: code, characters: chars, modifiers: flags,
+                                                        windowNumber: presentation.panel.windowNumber))
+            XCTAssertTrue(presentation.panel.childWindows?.isEmpty ?? true, "keyCode \(code), modifiers \(flags)")
+            title.setOptionHeld(false)
+        }
+        title.expandButton.performClick(nil)
+        _ = presentation.view.handleKeyDown(chooserKeyEvent(keyCode: 125, characters: ""))
+        XCTAssertNotNil(presentation.panel.childWindows?.first)
+    }
+
     func testProductionPanelDispatchesCopyKeysNavigationAndCancellation() throws {
         let pasteboard = NSPasteboard(name: .init("EligoTests.Copy.\(UUID())"))
         defer { pasteboard.releaseGlobally() }
@@ -423,4 +542,21 @@ final class ChooserURLCopyTests: XCTestCase {
 private final class HoverPointerWindow: NSWindow {
     var pointerLocation: NSPoint = .zero
     override var mouseLocationOutsideOfEventStream: NSPoint { pointerLocation }
+}
+
+@MainActor
+private final class CopyTestPasteboard: NSObject, LinkCopyPasteboard, NSPasteboardItemDataProvider {
+    let board = NSPasteboard(name: .init("EligoTests.CopyWrite.\(UUID())"))
+    var rejectedText: String?
+
+    func clearContents() -> Int { board.clearContents() }
+    func setString(_ string: String, forType type: NSPasteboard.PasteboardType) -> Bool {
+        string != rejectedText && board.setString(string, forType: type)
+    }
+
+    nonisolated func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem,
+                                provideDataForType type: NSPasteboard.PasteboardType) {
+        XCTFail("复制链接时请求了剪贴板的旧文本")
+        item.setString("previous text", forType: type)
+    }
 }

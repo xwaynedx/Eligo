@@ -27,55 +27,36 @@ enum RulesSettingsAction: Equatable, Sendable {
 struct RulesSettingsView: View, AppLocalizing {
     let rules: [DomainRule]
     let scope: RoutingScope
-    let destinations: [OpenDestination]
-    let browserNames: [Browser.ID: String]
+    let destinationContext: RuleDestinationContext
     let selectedRuleIDs: Set<DomainRule.ID>
     let message: String?
     let onAction: (RulesSettingsAction) -> Void
     let onEditRoutingScope: () -> Void
-    @ObservedObject var appLanguageStore: AppLanguageStore
+    var appLanguageStore: AppLanguageStore { destinationContext.appLanguageStore }
     @State private var searchText = ""
     @State private var browserFilter: Browser.ID?
 
     static func filteredRules(
         _ rules: [DomainRule], query: String, browserID: Browser.ID?,
-        browserNames: [Browser.ID: String], appLanguageStore: AppLanguageStore
+        context: RuleDestinationContext
     ) -> [DomainRule] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
         return rules.filter { rule in
             (browserID == nil || rule.destinationID.browserID == browserID)
                 && (query.isEmpty || rule.matcher.normalizedHost.localizedStandardContains(query)
-                    || destinationName(rule.destinationID, browserNames: browserNames, using: appLanguageStore)
+                    || context.displayName(rule.destinationID)
                         .localizedStandardContains(query))
         }
     }
 
     private var visibleRules: [DomainRule] {
         Self.filteredRules(rules, query: searchText, browserID: browserFilter,
-                           browserNames: browserNames, appLanguageStore: appLanguageStore)
+                           context: destinationContext)
     }
 
     private var filterBrowserIDs: [Browser.ID] {
-        Set(rules.map { $0.destinationID.browserID } + destinations.map { $0.browser.id })
-            .sorted { browserName($0).localizedStandardCompare(browserName($1)) == .orderedAscending }
-    }
-
-    private func browserName(_ id: Browser.ID) -> String {
-        Self.browserName(id, in: browserNames)
-    }
-
-    private static func browserName(_ id: Browser.ID, in names: [Browser.ID: String]) -> String {
-        names[id] ?? BrowserDefinition.definition(for: id)?.displayName ?? id
-    }
-
-    private static func destinationName(
-        _ id: OpenDestinationID, browserNames: [Browser.ID: String], using appLanguageStore: AppLanguageStore
-    ) -> String {
-        let name = browserName(id.browserID, in: browserNames)
-        guard id.mode == .privateBrowsing else { return name }
-        let mode = BrowserDefinition.definition(for: id.browserID)?.privateLaunchAdapter?
-            .actionTitle(language: appLanguageStore.language) ?? appLanguageStore.text("Private")
-        return "\(name) \(mode)"
+        Set(rules.map { $0.destinationID.browserID } + destinationContext.destinations.map { $0.browser.id })
+            .sorted { destinationContext.browserName($0).localizedStandardCompare(destinationContext.browserName($1)) == .orderedAscending }
     }
 
     private var isOnlyTheseScope: Bool {
@@ -112,7 +93,7 @@ struct RulesSettingsView: View, AppLocalizing {
                 Picker(t("Target browser"), selection: $browserFilter) {
                     Text(t("All browsers")).tag(Optional<Browser.ID>.none)
                     ForEach(filterBrowserIDs, id: \.self) { id in
-                        Text(browserName(id)).tag(Optional(id))
+                        Text(destinationContext.browserName(id)).tag(Optional(id))
                     }
                 }
                 .labelsHidden()
@@ -161,9 +142,8 @@ struct RulesSettingsView: View, AppLocalizing {
                         let coverage = scope.coverage(of: rule.matcher)
                         RuleRowView(
                             rule: rule,
-                            destinations: destinations,
-                            destinationTitle: appLanguageStore.format("%@ (unavailable)", Self.destinationName(
-                                rule.destinationID, browserNames: browserNames, using: appLanguageStore)),
+                            destinations: destinationContext.destinations,
+                            unavailableDestinationTitle: destinationContext.unavailableDestinationTitle(rule.destinationID),
                             coverage: coverage,
                             canAddToScope: isOnlyTheseScope && coverage != .full,
                             isSelected: selectedRuleIDs.contains(rule.id),
@@ -185,6 +165,9 @@ struct RulesSettingsView: View, AppLocalizing {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onChange(of: filterBrowserIDs) { _, ids in
+            if let browserFilter, !ids.contains(browserFilter) { self.browserFilter = nil }
+        }
     }
 
 }
@@ -192,7 +175,7 @@ struct RulesSettingsView: View, AppLocalizing {
 private struct RuleRowView: View {
     let rule: DomainRule
     let destinations: [OpenDestination]
-    let destinationTitle: String
+    let unavailableDestinationTitle: String
     let coverage: RoutingScopeCoverage
     let canAddToScope: Bool
     let isSelected: Bool
@@ -253,7 +236,7 @@ private struct RuleRowView: View {
                 get: { rule.destinationID }, set: { onDestinationChange($0) }
             )) {
                 if !destinations.contains(where: { $0.id == rule.destinationID }) {
-                    Text(destinationTitle).tag(rule.destinationID)
+                    Text(unavailableDestinationTitle).tag(rule.destinationID)
                 }
                 OpenDestinationPickerOptions(
                     destinations: destinations,

@@ -359,7 +359,8 @@ final class ApplicationActivatorTests: XCTestCase {
 
 @MainActor
 final class ControlledActivationApplication: ActivationApplication {
-    let processIdentifier: pid_t = 42
+    let processIdentifier: pid_t
+    init(processIdentifier: pid_t = 42) { self.processIdentifier = processIdentifier }
     var isActive = false
     var isTerminated = false
     var activationResults = [true]
@@ -377,13 +378,17 @@ final class ControlledActivationApplication: ActivationApplication {
 @MainActor
 final class ControlledActivationSystem: ApplicationActivationSystem {
     var application: ControlledActivationApplication?
+    var preferredApplications: [pid_t: ControlledActivationApplication] = [:]
     var isSourceActive = true
     var yieldedProcessIdentifiers: [pid_t] = []
     var observers: [UUID: @MainActor @Sendable (ApplicationActivationEvent) -> Void] = [:]
     func yieldActivation(to application: any ActivationApplication) {
         yieldedProcessIdentifiers.append(application.processIdentifier)
     }
-    func findApplication(bundleIdentifier: String, preferredApplication: NSRunningApplication?) -> (any ActivationApplication)? { application }
+    func findApplication(bundleIdentifier: String, preferredApplication: NSRunningApplication?) -> (any ActivationApplication)? {
+        if let preferredApplication { return preferredApplications[preferredApplication.processIdentifier] }
+        return application
+    }
     func observe(_ action: @escaping @MainActor @Sendable (ApplicationActivationEvent) -> Void) -> () -> Void {
         let id = UUID()
         observers[id] = action

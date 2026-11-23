@@ -20,13 +20,16 @@ final class LinkSourceViewTests: XCTestCase {
         XCTAssertEqual(LinkSource.unknown.displayText(language: .simplifiedChinese), "来源未知")
     }
 
-    func testToolTipPrefersBundleIdentifierAndFallsBackToName() {
-        XCTAssertEqual(slackSource.toolTip, "com.tinyspeck.slackmacgap")
+    func testToolTipShowsFullNameAndAvailableBundleIdentifier() {
+        XCTAssertEqual(slackSource.toolTip, "Slack\ncom.tinyspeck.slackmacgap")
         XCTAssertEqual(
             LinkSource.app(AppSender(name: "Helper", bundleIdentifier: nil, appURL: nil)).toolTip,
             "Helper"
         )
         XCTAssertNil(LinkSource.unknown.toolTip)
+        let name = String(repeating: "Long application ", count: 8)
+        let source = LinkSource.app(AppSender(name: name, bundleIdentifier: "test.long", appURL: nil))
+        XCTAssertEqual(LinkSourceView(source: source, language: .english).toolTip, "\(name)\ntest.long")
     }
 
     func testLogDescriptionIdentifiesAppAndUnknown() {

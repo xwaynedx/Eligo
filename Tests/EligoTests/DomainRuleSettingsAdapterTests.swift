@@ -91,7 +91,7 @@ final class DomainRuleSettingsAdapterTests: XCTestCase {
         let browserNames = [safari.browser.id: safari.browser.name, chrome.browser.id: "Work Browser"]
         func search(_ query: String, _ browser: Browser.ID? = nil) -> [DomainRule.ID] {
             RulesSettingsView.filteredRules(rules, query: query, browserID: browser,
-                browserNames: browserNames, appLanguageStore: fixture.languageStore).map(\.id)
+                context: .init(destinations: [safari], browserNames: browserNames, appLanguageStore: fixture.languageStore)).map(\.id)
         }
         XCTAssertEqual(search(" DOCS "), [rules[0].id])
         XCTAssertEqual(search("work browser"), [rules[1].id])
@@ -191,8 +191,7 @@ final class DomainRuleSettingsAdapterTests: XCTestCase {
         let sheet = RuleEditorSheet(
             draft: forgedDraft,
             rules: [existingRule],
-            destinations: [],
-            appLanguageStore: fixture.languageStore
+            destinationContext: .init(destinations: [], browserNames: [:], appLanguageStore: fixture.languageStore)
         ) { (draft: RuleEditorDraft) throws(DomainRuleSettingsDisplayError) -> Void in
             try DomainRuleSettingsAdapter.commitSingle(item: item, draft: draft, session: fixture.session)
         }
@@ -721,8 +720,8 @@ final class DomainRuleSettingsAdapterTests: XCTestCase {
         XCTAssertEqual(relay.presentationDidDismiss(), firstID)
 
         // A promoted presentation must not be re-presented synchronously inside the dismissal
-        // chain: SwiftUI would stack a sheet detached from its binding (zombie sheet,
-        // settings-sheet-zombie/01). The relay asks the caller to defer one runloop turn.
+        // chain: SwiftUI would stack a sheet detached from its binding. The relay asks the caller
+        // to defer one runloop turn.
         let promotedID = DomainRuleSettingsSession.PresentationID()
         XCTAssertTrue(relay.synchronize(
             with: .singleRuleCreate(id: promotedID, prefill: nil),

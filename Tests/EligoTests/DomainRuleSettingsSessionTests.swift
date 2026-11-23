@@ -1989,7 +1989,7 @@ final class DomainRuleSettingsSessionTests: XCTestCase {
         }
         XCTAssertEqual(prefill?.matcher.normalizedHost, "zed.dev")
 
-        // Regression (settings-sheet-zombie/01): the first sync inside the dismissal chain must
+        // The first sync inside the dismissal chain must
         // defer instead of handing the view a new sheet item synchronously.
         XCTAssertTrue(relay.synchronize(
             with: fixture.session.state.presentation,

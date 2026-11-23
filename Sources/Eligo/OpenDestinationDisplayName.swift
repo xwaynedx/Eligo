@@ -4,13 +4,38 @@ extension OpenDestination {
     /// 提供文本描述，供搜索、辅助功能及不展示图标的位置使用。
     @MainActor
     func displayName(using appLanguageStore: AppLanguageStore) -> String {
-        guard mode == .privateBrowsing else { return browser.name }
+        id.displayName(browserName: browser.name, using: appLanguageStore)
+    }
+}
+
+extension OpenDestinationID {
+    @MainActor
+    func displayName(browserName: String, using appLanguageStore: AppLanguageStore) -> String {
+        guard mode == .privateBrowsing else { return browserName }
         let adapter = BrowserDefinition.definition(
-            for: browser.bundleIdentifier
+            for: browserID
         )?.privateLaunchAdapter
         let privateTitle = adapter?.actionTitle(language: appLanguageStore.language)
             ?? appLanguageStore.text("Private")
-        return "\(browser.name) \(privateTitle)"
+        return "\(browserName) \(privateTitle)"
+    }
+}
+
+struct RuleDestinationContext: DynamicProperty, AppLocalizing {
+    let destinations: [OpenDestination]
+    let browserNames: [Browser.ID: String]
+    @ObservedObject var appLanguageStore: AppLanguageStore
+
+    func browserName(_ id: Browser.ID) -> String {
+        browserNames[id] ?? BrowserDefinition.definition(for: id)?.displayName ?? id
+    }
+
+    func displayName(_ id: OpenDestinationID) -> String {
+        id.displayName(browserName: browserName(id.browserID), using: appLanguageStore)
+    }
+
+    func unavailableDestinationTitle(_ id: OpenDestinationID) -> String {
+        appLanguageStore.format("%@ (unavailable)", displayName(id))
     }
 }
 

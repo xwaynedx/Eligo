@@ -79,6 +79,28 @@ final class NSWorkspaceOpenerIntegrationTests: XCTestCase {
         }
     }
 
+    func testNormalURLReturnsTheReceivingFixtureProcess() async throws {
+        let fixture = try await makeFixture()
+        let file = fixture.appURL.appendingPathComponent("Contents/Info.plist")
+        let completed = expectation(description: "Normal URL recipient")
+        completed.assertForOverFulfill = true
+        var recipient: NSRunningApplication?
+        NSWorkspaceOpener().openURLs([file], withApplicationAt: fixture.appURL) { success, application in
+            XCTAssertTrue(Thread.isMainThread)
+            XCTAssertTrue(success)
+            recipient = application
+            completed.fulfill()
+        }
+        let wait = await XCTWaiter.fulfillment(of: [completed], timeout: 10)
+        XCTAssertEqual(wait, .completed)
+        let app = try XCTUnwrap(recipient)
+        let record = try await fixture.record(for: app)
+        XCTAssertEqual(record.bundleIdentifier, fixture.bundleIdentifier)
+        XCTAssertEqual(record.processIdentifier, app.processIdentifier)
+        let received = try await fixture.receivedURLs(for: app)
+        XCTAssertEqual(received.map { $0.resolvingSymlinksInPath() }, [file.resolvingSymlinksInPath()])
+    }
+
     func testMissingApplicationForURLsReportsFailure() async throws {
         try requireDesktopSession()
         let identity = UUID().uuidString
@@ -89,7 +111,8 @@ final class NSWorkspaceOpenerIntegrationTests: XCTestCase {
         completed.assertForOverFulfill = true
         var result: Bool?
         var callbackCount = 0
-        NSWorkspaceOpener().openURLs([url], withApplicationAt: missing) { success in
+        NSWorkspaceOpener().openURLs([url], withApplicationAt: missing) { success, application in
+            XCTAssertNil(application)
             XCTAssertTrue(Thread.isMainThread)
             callbackCount += 1
             result = success
@@ -211,6 +234,14 @@ private final class WorkspaceForwardingFixture {
             throw WorkspaceFixtureError.operation("Fixture did not produce a launch record for PID \(application.processIdentifier)")
         }
         return try JSONDecoder().decode(Record.self, from: Data(contentsOf: url))
+    }
+
+    func receivedURLs(for application: NSRunningApplication) async throws -> [URL] {
+        let url = root.appendingPathComponent("records/\(application.processIdentifier)-urls.json")
+        guard try await waitUntil(timeout: 5, { FileManager.default.fileExists(atPath: url.path) }) else {
+            throw WorkspaceFixtureError.operation("Fixture did not receive the URL for PID \(application.processIdentifier)")
+        }
+        return try JSONDecoder().decode([URL].self, from: Data(contentsOf: url))
     }
 
     func cleanup(phase: String = "teardown") async throws {

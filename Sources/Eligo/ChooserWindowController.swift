@@ -437,7 +437,7 @@ private final class ChooserPanel: NSPanel {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if event.modifierFlags.contains(.command), event.keyCode == 36 || event.keyCode == 76,
+        if ChooserKeyTranslator.isCommandConfirm(event.keyCode, command: event.modifierFlags.contains(.command)),
            keyHandler?(event) == true { return true }
         return super.performKeyEquivalent(with: event)
     }

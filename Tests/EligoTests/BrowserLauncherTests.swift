@@ -73,7 +73,7 @@ final class BrowserLauncherTests: XCTestCase {
                     XCTAssertFalse(configuration.createsNewApplicationInstance)
                     XCTAssertFalse(configuration.addsToRecentItems)
                     XCTAssertFalse(configuration.promptsUserIfNeeded)
-                    completion(succeeds)
+                    completion(succeeds, succeeds ? .current : nil)
                 })
                 let activator = RecordingApplicationActivator()
                 var results: [Bool] = []
@@ -84,6 +84,7 @@ final class BrowserLauncherTests: XCTestCase {
                 XCTAssertEqual(results, [succeeds])
                 XCTAssertEqual(activator.bundleIdentifiers, succeeds ? [browser.bundleIdentifier] : [])
                 XCTAssertEqual(activator.mayActivateOnLaunchValues, succeeds ? [true] : [])
+                XCTAssertEqual(activator.preferredPIDs, succeeds ? [NSRunningApplication.current.processIdentifier] : [])
             }
         }
     }
@@ -106,7 +107,7 @@ final class BrowserLauncherTests: XCTestCase {
                     system.application?.isActive = true
                     system.isSourceActive = false
                 }
-                completion(true)
+                completion(true, nil)
             })
             let launcher = BrowserLauncher(workspace: workspace, applicationActivator: activator)
             var results: [Bool] = []
@@ -680,9 +681,9 @@ private final class RecordingWorkspace: WorkspaceOpening {
         self.results = results
     }
 
-    func openURLs(_ urls: [URL], withApplicationAt applicationURL: URL, completion: @escaping @MainActor (Bool) -> Void) {
+    func openURLs(_ urls: [URL], withApplicationAt applicationURL: URL, completion: @escaping @MainActor (Bool, NSRunningApplication?) -> Void) {
         urlRequests.append((urls, applicationURL))
-        completion(nextResult())
+        completion(nextResult(), nil)
     }
 
     func openApplication(
@@ -703,6 +704,7 @@ private final class RecordingWorkspace: WorkspaceOpening {
 @MainActor
 private final class RecordingApplicationActivator: ApplicationActivating {
     private(set) var bundleIdentifiers: [String] = []
+    private(set) var preferredPIDs: [pid_t] = []
     private(set) var mayActivateOnLaunchValues: [Bool] = []
 
     func whenActivationSettles(_ completion: @escaping @MainActor @Sendable () -> Void) { completion() }
@@ -711,6 +713,7 @@ private final class RecordingApplicationActivator: ApplicationActivating {
         bundleIdentifier: String, preferredApplication: NSRunningApplication?, mayActivateOnLaunch: Bool,
         completion: @escaping (ApplicationActivationResult) -> Void
     ) -> ActivationCancellation {
+        if let preferredApplication { preferredPIDs.append(preferredApplication.processIdentifier) }
         bundleIdentifiers.append(bundleIdentifier)
         mayActivateOnLaunchValues.append(mayActivateOnLaunch)
         completion(.activated)

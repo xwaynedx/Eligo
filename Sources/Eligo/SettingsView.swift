@@ -154,9 +154,10 @@ struct SettingsView: View, AppLocalizing {
                         session: domainRuleSession,
                         rules: routingPreferencesStore.settings.rules,
                         scope: routingPreferencesStore.settings.scope,
-                        destinations: availableDestinations,
-                        browserNames: ruleBrowserNames,
-                        appLanguageStore: appLanguageStore,
+                        destinationContext: RuleDestinationContext(
+                            destinations: availableDestinations, browserNames: ruleBrowserNames,
+                            appLanguageStore: appLanguageStore
+                        ),
                         onEffect: { effect in
                             if effect == .revealRules {
                                 sectionSelection.section = .rules

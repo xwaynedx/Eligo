@@ -40,7 +40,7 @@ The script tests use temporary repositories and command stubs for installation, 
 
 ## Conventions
 
-- Commit messages are English [conventional commits](https://www.conventionalcommits.com/).
+- Use a short English [Conventional Commits](https://www.conventionalcommits.com/) subject and write any commit body in English.
 - Terminology follows [CONTEXT.md](CONTEXT.md), the canonical glossary for product, code, tests, and documentation. Prefer its terms (Browser Chooser, Open Destination, Domain Rule, …) over inventing synonyms.
 
 ## Releases
