@@ -2,9 +2,9 @@
 
 English | [简体中文](CHANGELOG.zh-CN.md)
 
-## Unreleased
+## 0.2.0 — 2026-11-24
 
-Planned first public release: **0.2.0**, distributed as source code. The release date will be recorded when the version is published.
+Eligo’s first public release is distributed as source code.
 
 ### License
 
